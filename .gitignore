@@ -3,7 +3,9 @@
 !*/
 !/.github/FUNDING.yml
 !/.gitignore
+!/AGENTS.md
 !/BUILD.md
+!/CUSTOM_CHANGES.md
 !/LICENSE
 !/LICENSES/GPL-3.0-or-later.txt
 !/LICENSES/mbelib-ISC.txt

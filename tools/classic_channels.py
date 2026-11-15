@@ -143,7 +143,9 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
     ])
     transform('core/ui/ui_menus.c', [
         ('static const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };',
-         'static const int16_t v_led_style[] = { 0, 1, 2 };\nstatic const char *const n_led_style[] = { TRN("Default"), "Hytera", "Motorola" };\nstatic const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };'),
+         'static const int16_t v_led_style[] = { 0, 1, 2 };\nstatic const char *const n_led_style[] = { TRN("Default"), "Hytera", "Motorola" };\nstatic const int16_t v_spotlight[] = { 0, 1, 2 };\nstatic const char *const n_spotlight[] = { TRN("Channel"), "VFO", TRN("Both") };\nstatic const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };'),
+        ('\tLIST(TRN("Up/Down on Home"), NULL, UI_SET_UPDOWN_HOME, v_updown, n_updown),',
+         '\tLIST(TRN("Up/Down on Home"), NULL, UI_SET_UPDOWN_HOME, v_updown, n_updown),\n\tLIST(TRN("Spotlight"), "find search keypad vfo", UI_SET_SPOTLIGHT, v_spotlight, n_spotlight),'),
         ('\tTOGGLE(TRN("Hint row"), "help", UI_SET_HINTS),',
          '\tTOGGLE(TRN("Hint row"), "help", UI_SET_HINTS),\n\tTOGGLE(TRN("Standby LED"), "status blink indicator", UI_SET_STANDBY_LED),\n\tNUMBER(TRN("Standby interval"), "led blink gap", UI_SET_STANDBY_GAP_S, 1, 30, 1, " s"),\n\tNUMBER(TRN("Standby blink"), "led blink duration", UI_SET_STANDBY_ON_MS, 50, 1000, 50, " ms"),\n\tLIST(TRN("LED style"), "hytera motorola status", UI_SET_LED_STYLE, v_led_style, n_led_style),'),
         ('#if CONFIG_SFR_CWID\n\tLIST(TRN("SFR CW ID"), "single frequency repeater morse callsign identify", UI_SET_SFR_CWID, v_sfrcwid, n_sfrcwid),\n#endif\n};',
@@ -178,11 +180,19 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
     ])
     transform('core/ui/ui_svc.h', [
         ('\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_COUNT',
-         '\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_STANDBY_LED, UI_SET_STANDBY_GAP_S, UI_SET_STANDBY_ON_MS, UI_SET_LED_STYLE, UI_SET_AUTO_SQL,\n\tUI_SET_COUNT'),
+         '\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_STANDBY_LED, UI_SET_STANDBY_GAP_S, UI_SET_STANDBY_ON_MS, UI_SET_LED_STYLE, UI_SET_AUTO_SQL, UI_SET_SPOTLIGHT,\n\tUI_SET_COUNT'),
         ('} ui_event_kind_t;', '\tUI_EV_CODEPLUG_STARTED,\t// Start new and its held edit finished successfully\n} ui_event_kind_t;'),
     ])
     transform('core/ui/ui_app.c', [
+        ('static bool has_quick_key, has_context_key;',
+         'static bool has_quick_key, has_context_key;\nstatic uint8_t spotlight_mode;'),
         ('\tcase UI_EV_CODEPLUG_FOREIGN:', '\tcase UI_EV_CODEPLUG_STARTED:\n\t\tui_toast(TR("New codeplug started"));\n\t\tbreak;\n\tcase UI_EV_CODEPLUG_FOREIGN:'),
+        ('\tif (d >= 0 && (press || ev->gesture == GESTURE_LONG)) {\n\t\tif (view->vfo) {\n\t\t\tentry_last = now;\n\t\t\tentry_digit((char)(\'0\' + d));\n\t\t} else {\n\t\t\tchar q[2] = { (char)(\'0\' + d), 0 };\n\t\t\tui_push(SCR_FIND, 0);\n\t\t\tui_find_set(q);\n\t\t}\n\t\treturn true;\n\t}',
+         '\tif (d >= 0 && (press || ev->gesture == GESTURE_LONG)) {\n\t\tbool use_find = view->vfo ? (spotlight_mode == 1 || spotlight_mode == 2) : (spotlight_mode == 0 || spotlight_mode == 2);\n\t\tif (use_find) {\n\t\t\tchar q[2] = { (char)(\'0\' + d), 0 };\n\t\t\tui_push(SCR_FIND, 0);\n\t\t\tui_find_set(q);\n\t\t} else if (view->vfo) {\n\t\t\tentry_last = now;\n\t\t\tentry_digit((char)(\'0\' + d));\n\t\t}\n\t\treturn true;\n\t}'),
+        ('\t\t\t\t\t  UI_SET_UPDOWN_HOME, UI_SET_LOW_BATTERY,',
+         '\t\t\t\t\t  UI_SET_UPDOWN_HOME, UI_SET_SPOTLIGHT, UI_SET_LOW_BATTERY,'),
+        ('\tcase UI_SET_UPDOWN_HOME: ui_st.updown = (uint8_t)(v >= 0 && v <= 2 ? v : 0); break;',
+         '\tcase UI_SET_UPDOWN_HOME: ui_st.updown = (uint8_t)(v >= 0 && v <= 2 ? v : 0); break;\n\tcase UI_SET_SPOTLIGHT: spotlight_mode = (uint8_t)(v >= 0 && v <= 2 ? v : 0); break;'),
         ('\tif (view->vfo) {\n\t\tui_toast(TR("VFO settings save automatically"));',
          '\tif (view->vfo) {\n\t\tif (view->temp & RADIO_TEMP_SQUELCH) {\n\t\t\tui_svc_setting_set(UI_SET_SQUELCH, view->squelch);\n\t\t\tradio_req_clear_temporary();\n\t\t\tui_toast(TR("Squelch saved"));\n\t\t\treturn true;\n\t\t}\n\t\tui_toast(TR("VFO settings save automatically"));'),
         ('\tdefault:\t// value tiles: squelch, brightness\n\t\tui_st.quick_edit = true;\n\t\tbreak;',
@@ -207,6 +217,12 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
 \t\t}'''),
         ('\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;',
          '\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;\n\tcase UI_SET_STANDBY_LED:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_led;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_gap_s;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_on_ms;\n\tcase UI_SET_LED_STYLE:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.led_style;\n\tcase UI_SET_AUTO_SQL:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.auto_sql;'),
+        ('\tcase UI_SET_UPDOWN_HOME:\n\t\tsettings_read(&st);\n\t\treturn settings_updown_home(&st);',
+         '\tcase UI_SET_UPDOWN_HOME:\n\t\tsettings_read(&st);\n\t\treturn settings_updown_home(&st);\n\tcase UI_SET_SPOTLIGHT:\n\t\tsettings_read(&st);\n\t\treturn (st.updown_home >> 2) & 0x03u;'),
+        ('\tcase UI_SET_UPDOWN_HOME:\n\tcase UI_SET_LOW_BATTERY:',
+         '\tcase UI_SET_UPDOWN_HOME:\n\tcase UI_SET_SPOTLIGHT:\n\tcase UI_SET_LOW_BATTERY:'),
+        ('\t\t} else if (id == UI_SET_UPDOWN_HOME) {\n\t\t\tst->updown_home = (uint8_t)((st->updown_home & ~SETTINGS_SMALL_MASK) | clamp16(value, 0, 2));',
+         '\t\t} else if (id == UI_SET_UPDOWN_HOME) {\n\t\t\tst->updown_home = (uint8_t)((st->updown_home & ~SETTINGS_SMALL_MASK) | clamp16(value, 0, 2));\n\t\t} else if (id == UI_SET_SPOTLIGHT) {\n\t\t\tst->updown_home = (uint8_t)((st->updown_home & ~0x0Cu) | ((clamp16(value, 0, 2) & 0x03u) << 2));'),
         ('\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:',
          '\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:\n\tcase UI_SET_STANDBY_LED:\n\tcase UI_SET_STANDBY_GAP_S:\n\tcase UI_SET_STANDBY_ON_MS:\n\tcase UI_SET_LED_STYLE:\n\tcase UI_SET_AUTO_SQL:'),
     ])
@@ -316,7 +332,7 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
 \tif (sq == 0) {
 \t\treturn 255;
 \t}
-\tif (sm->set.auto_sql && sm->sql_floor_q8 != 0 && !sm->view.am && !sm->view.bcast && !scan_on(&sm->scan)) {
+\tif (sm->set.auto_sql && sm->sql_floor_q8 != 0 && !sm->view.bcast && !scan_on(&sm->scan)) {
 \t\tuint16_t floor = (uint16_t)((sm->sql_floor_q8 + 128u) >> 8);
 \t\tuint16_t margin = 8u + (sq > RADIO_SQUELCH_MAX ? RADIO_SQUELCH_MAX : sq);
 \t\tuint16_t thresh = floor > margin ? (uint16_t)(floor - margin) : 16u;
@@ -329,7 +345,7 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
 
 static void auto_sql_update(radio_sm_t *sm, uint8_t noise, uint8_t sq)
 {
-\tif (!sm->set.auto_sql || sq == 0 || sm->view.am || sm->view.bcast ||
+\tif (!sm->set.auto_sql || sq == 0 || sm->view.bcast ||
 \t    scan_on(&sm->scan) || sm->view.state != RS_IDLE || sm->view.monitor) {
 \t\treturn;
 \t}
