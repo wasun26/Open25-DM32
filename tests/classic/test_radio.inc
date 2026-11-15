@@ -140,9 +140,61 @@ static void test_classic_idle_rearm(void)
     down.arg=0;CHECK(native_lab_request(&sm,&down)==1);classic_pump();classic_pump();classic_pump();
     CHECK(classic_live->state==NT_RX && !sm.ptt && !classic_live->keyed && !hw.tx_calls);
 }
+static void test_classic_standby_led(void)
+{
+    setup_codeplug();start();
+    CHECK(!sm.set.standby_led && sm.set.standby_gap_s==5 && sm.set.standby_on_ms==100 && sm.set.led_style==0);
+    radio_sm_poll(&sm,4900);
+    CHECK(!hw.led[LED_GREEN] && !(sm.view.leds & RADIO_LED_GREEN));
+
+    radio_settings_t rs=sm.set;
+    rs.standby_led=true;
+    radio_sm_set_settings(&sm,&rs,4899);
+    radio_sm_poll(&sm,4899);
+    CHECK(!hw.led[LED_GREEN]);
+
+    radio_sm_poll(&sm,4900);
+    CHECK(hw.led[LED_GREEN] && (sm.view.leds & RADIO_LED_GREEN));
+
+    radio_sm_poll(&sm,5000);
+    CHECK(!hw.led[LED_GREEN] && !(sm.view.leds & RADIO_LED_GREEN));
+
+    /* Custom interval (2 s) and blink duration (250 ms) */
+    rs.standby_gap_s=2;
+    rs.standby_on_ms=250;
+    radio_sm_set_settings(&sm,&rs,1749);
+    radio_sm_poll(&sm,1749);
+    CHECK(!hw.led[LED_GREEN]);
+    radio_sm_poll(&sm,1750);
+    CHECK(hw.led[LED_GREEN]);
+    radio_sm_poll(&sm,2000);
+    CHECK(!hw.led[LED_GREEN]);
+
+    /* Motorola style: blinking green on RX, amber on monitor */
+    rs.standby_led=false;
+    rs.led_style=2;
+    radio_sm_set_settings(&sm,&rs,100);
+    sm.view.ch.mode=RADIO_MODE_FM;
+    sm.view.state=RS_RX;
+    sm.view.monitor=false;
+    radio_sm_poll(&sm,100);
+    CHECK(hw.led[LED_GREEN] && !hw.led[LED_RED]);
+    radio_sm_poll(&sm,250);
+    CHECK(!hw.led[LED_GREEN] && !hw.led[LED_RED]);
+    sm.view.state=RS_IDLE;
+    sm.view.monitor=true;
+    radio_sm_poll(&sm,300);
+    CHECK(hw.led[LED_GREEN] && hw.led[LED_RED]);
+
+    /* Hytera style: amber on monitor */
+    rs.led_style=1;
+    radio_sm_set_settings(&sm,&rs,350);
+    radio_sm_poll(&sm,350);
+    CHECK(hw.led[LED_GREEN] && hw.led[LED_RED]);
+}
 int main(void)
 {
-    int prior=upstream_radio_main();test_classic_ownership();test_classic_idle_rearm();
+    int prior=upstream_radio_main();test_classic_ownership();test_classic_idle_rearm();test_classic_standby_led();
     printf("Classic real FM/DMR/P25 admission and ownership: %d failures\n",failures);
     return prior || failures ? 1 : 0;
 }

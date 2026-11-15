@@ -142,6 +142,10 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
 \tbool ok = materialize() && flash_read(channel_addr(number), r, sizeof(r));'''),
     ])
     transform('core/ui/ui_menus.c', [
+        ('static const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };',
+         'static const int16_t v_led_style[] = { 0, 1, 2 };\nstatic const char *const n_led_style[] = { TRN("Default"), "Hytera", "Motorola" };\nstatic const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };'),
+        ('\tLIST(TRN("Backlight Dim/Off"), "timeout", UI_SET_BACKLIGHT_S, v_backlight, n_backlight),',
+         '\tLIST(TRN("Backlight Dim/Off"), "timeout", UI_SET_BACKLIGHT_S, v_backlight, n_backlight),\n\tTOGGLE(TRN("Standby LED"), "status blink indicator", UI_SET_STANDBY_LED),\n\tNUMBER(TRN("Standby interval"), "led blink gap", UI_SET_STANDBY_GAP_S, 1, 30, 1, " s"),\n\tNUMBER(TRN("Standby blink"), "led blink duration", UI_SET_STANDBY_ON_MS, 50, 1000, 50, " ms"),\n\tLIST(TRN("LED style"), "hytera motorola status", UI_SET_LED_STYLE, v_led_style, n_led_style),'),
         ('ui_toast(i == UI_CP_NEW ? TR("New codeplug started") : TR("Old codeplug kept: edit again"));',
          'ui_toast(i == UI_CP_NEW ? TR("Creating codeplug") : TR("Old codeplug kept: edit again"));'),
         ('static void contacts_item(uint16_t i, ui_item_t *it)', 'static void __attribute__((unused)) contacts_item(uint16_t i, ui_item_t *it)'),
@@ -168,6 +172,8 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
     ])
     transform('core/ui/ui_svc.h', [
         ('} ui_event_kind_t;', '\tUI_EV_CODEPLUG_STARTED,\t// Start new and its held edit finished successfully\n} ui_event_kind_t;'),
+        ('\tUI_SET_BRIGHTNESS, UI_SET_BACKLIGHT_S, UI_SET_THEME, UI_SET_LARGE_TEXT, UI_SET_HINTS,',
+         '\tUI_SET_BRIGHTNESS, UI_SET_BACKLIGHT_S, UI_SET_STANDBY_LED, UI_SET_STANDBY_GAP_S, UI_SET_STANDBY_ON_MS, UI_SET_LED_STYLE, UI_SET_THEME, UI_SET_LARGE_TEXT, UI_SET_HINTS,'),
     ])
     transform('core/ui/ui_app.c', [
         ('\tcase UI_EV_CODEPLUG_FOREIGN:', '\tcase UI_EV_CODEPLUG_STARTED:\n\t\tui_toast(TR("New codeplug started"));\n\t\tbreak;\n\tcase UI_EV_CODEPLUG_FOREIGN:'),
@@ -187,8 +193,14 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
 \t\t\tui_event_t ev = { .kind = UI_EV_CODEPLUG_STARTED };
 \t\t\tui_notify(&ev);
 \t\t}'''),
+        ('\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;',
+         '\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;\n\tcase UI_SET_STANDBY_LED:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_led;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_gap_s;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_on_ms;\n\tcase UI_SET_LED_STYLE:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.led_style;'),
+        ('\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:',
+         '\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:\n\tcase UI_SET_STANDBY_LED:\n\tcase UI_SET_STANDBY_GAP_S:\n\tcase UI_SET_STANDBY_ON_MS:\n\tcase UI_SET_LED_STYLE:'),
     ])
     transform('core/radio/radio_sm.h', [
+        ('\tuint32_t batt_ms;\t\t// last battery reading',
+         '\tuint32_t batt_ms;\t\t// last battery reading\n\tuint32_t led_now_ms;\t\t// latest poll timestamp for standby LED blink'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms);', '''void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms);
 uint8_t radio_sm_tx_check(const radio_sm_t *sm);
 #if CONFIG_P25_CHANNELS
@@ -227,9 +239,59 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
 #if CONFIG_P25_CHANNELS
 \tif (codeplug_mode_p25(sm->view.ch.mode)) { open = false; green = sm->view.state == RS_RX; }
 #endif'''),
+        ('\tif (sm->green_out != (int8_t)green) {\n\t\tsm->green_out = (int8_t)green;\n\t\tboard.power->led(LED_GREEN, green);\n\t}', '''\tbool led_green = green;
+\tbool led_red = tx;
+\tif (!tx && sm->set.led_style != 0) {
+\t\tbool rx_other = false;
+#if CONFIG_DMR
+\t\trx_other = !fm && sm->view.state == RS_RX && sm->view.dmr.state == RDMR_RX_OTHER;
+#endif
+\t\tif (sm->set.led_style == 2) {
+\t\t\tif (green && !sm->view.monitor) {
+\t\t\t\tled_green = (sm->led_now_ms % 400u) < 200u;
+\t\t\t} else if (sm->view.monitor || rx_other) {
+\t\t\t\tled_green = true;
+\t\t\t\tled_red = true;
+\t\t\t}
+\t\t} else if (sm->set.led_style == 1) {
+\t\t\tif (sm->view.monitor || rx_other) {
+\t\t\t\tled_green = true;
+\t\t\t\tled_red = true;
+\t\t\t}
+\t\t}
+\t}
+\tuint32_t gap_ms = (uint32_t)(sm->set.standby_gap_s ? sm->set.standby_gap_s : 5u) * 1000u;
+\tuint32_t on_ms = (uint32_t)(sm->set.standby_on_ms ? sm->set.standby_on_ms : 100u);
+\tif (on_ms >= gap_ms) on_ms = gap_ms - 1u;
+\tbool standby_blink = !tx && !green && !open && !led_red && !sm->hotspot && !sm->sfr_rpt &&
+\t\tsm->set.standby_led && sm->view.state == RS_IDLE &&
+\t\t(sm->led_now_ms % gap_ms) >= (gap_ms - on_ms);
+#if CONFIG_DUAL_WATCH
+\tif (sm->rx2_on) standby_blink = false;
+#endif
+\tif (standby_blink) led_green = true;
+\tif (sm->green_out != (int8_t)led_green) {
+\t\tsm->green_out = (int8_t)led_green;
+\t\tboard.power->led(LED_GREEN, led_green);
+\t}'''),
+        ('\tif (sm->red_out != (int8_t)tx) {\n\t\tsm->red_out = (int8_t)tx;\n\t\tboard.power->led(LED_RED, tx);\n\t}',
+         '\tif (sm->red_out != (int8_t)led_red) {\n\t\tsm->red_out = (int8_t)led_red;\n\t\tboard.power->led(LED_RED, led_red);\n\t}'),
+        ('\tsm->view.leds = (uint8_t)((green ? RADIO_LED_GREEN : 0u) | (tx ? RADIO_LED_RED : 0u));',
+         '\tsm->view.leds = (uint8_t)((led_green ? RADIO_LED_GREEN : 0u) | (led_red ? RADIO_LED_RED : 0u));'),
+        ('\ts->talk_permit = true;',
+         '\ts->talk_permit = true;\n\ts->standby_gap_s = 5;\n\ts->standby_on_ms = 100;'),
+        ('\tif (s->beep_level > 100) {',
+         '\tif (s->standby_gap_s == 0) s->standby_gap_s = 5;\n\telse if (s->standby_gap_s > 30) s->standby_gap_s = 30;\n\tif (s->standby_on_ms == 0) s->standby_on_ms = 100;\n\telse if (s->standby_on_ms < 50) s->standby_on_ms = 50;\n\telse if (s->standby_on_ms > 1000) s->standby_on_ms = 1000;\n\tif (s->led_style > 2) s->led_style = 0;\n\tif (s->beep_level > 100) {'),
+        ('\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;',
+         '\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;\n\ts->standby_led = (st->rs_flags & SETTINGS_RS_STANDBY_LED) != 0;\n\ts->standby_gap_s = st->rs_standby_gap_s ? st->rs_standby_gap_s : 5;\n\ts->standby_on_ms = st->rs_standby_on_ms ? st->rs_standby_on_ms : 100;\n\ts->led_style = st->rs_led_style;'),
+        ('\t\t\t\t (s->talk_permit ? 0 : SETTINGS_RS_NO_TALK_PERMIT));',
+         '\t\t\t\t (s->talk_permit ? 0 : SETTINGS_RS_NO_TALK_PERMIT) |\n\t\t\t\t (s->standby_led ? SETTINGS_RS_STANDBY_LED : 0));\n\tst->rs_standby_gap_s = s->standby_gap_s;\n\tst->rs_standby_on_ms = s->standby_on_ms;\n\tst->rs_led_style = s->led_style;'),
+        ('\tmemset(sm, 0, sizeof(*sm));',
+         '\tmemset(sm, 0, sizeof(*sm));\n\tsm->led_now_ms = now_ms;'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)', '''#if CONFIG_P25_CHANNELS
 void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms)
 {
+\tsm->led_now_ms = now_ms;
 \tfollow_volume(sm);
 \tbattery_poll(sm, now_ms);
 \tif (sm->view.state == RS_TX) tx_timer(sm, now_ms);
@@ -240,6 +302,20 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms)
 }
 #endif
 void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)'''),
+        ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)\n{\n\tradio_status_t st;',
+         'void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)\n{\n\tradio_status_t st;\n\tsm->led_now_ms = now_ms;'),
+        ('\tif (sm->dmr_running) {\n\t\treturn;\t\t// the state follows the call stack (radio_sm_tick), and the stack keeps its own TX time-out\n\t}',
+         '\tif (sm->dmr_running) {\n\t\toutputs(sm);\n\t\treturn;\t\t// the state follows the call stack (radio_sm_tick), and the stack keeps its own TX time-out\n\t}'),
+    ])
+    transform('core/settings/settings.h', [
+        ('\tsettings_zs_import_t zs_import[SETTINGS_ZS_IMPORTS];\n} settings_t;',
+         '\tsettings_zs_import_t zs_import[SETTINGS_ZS_IMPORTS];\n\tuint8_t rs_standby_gap_s;\n\tuint16_t rs_standby_on_ms;\n\tuint8_t rs_led_style;\n} settings_t;'),
+        ('#define SETTINGS_RS_NO_TALK_PERMIT\t0x20u\t// the talk permit tone off (0 = on, as before)',
+         '#define SETTINGS_RS_NO_TALK_PERMIT\t0x20u\t// the talk permit tone off (0 = on, as before)\n#define SETTINGS_RS_STANDBY_LED\t\t0x40u\t// periodic green LED blink while idle/standby'),
+    ])
+    transform('core/ui/ui_svc_radio.c', [
+        ('\tcase UI_SET_TALK_PERMIT:\n\t\trs.talk_permit = value != 0;\n\t\tbreak;',
+         '\tcase UI_SET_TALK_PERMIT:\n\t\trs.talk_permit = value != 0;\n\t\tbreak;\n\tcase UI_SET_STANDBY_LED:\n\t\trs.standby_led = value != 0;\n\t\tbreak;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\trs.standby_gap_s = (uint8_t)(value < 1 ? 1 : value > 30 ? 30 : value);\n\t\tbreak;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\trs.standby_on_ms = (uint16_t)(value < 50 ? 50 : value > 1000 ? 1000 : value);\n\t\tbreak;\n\tcase UI_SET_LED_STYLE:\n\t\trs.led_style = (uint8_t)(value < 0 || value > 2 ? 0 : value);\n\t\tbreak;'),
     ])
     transform('core/debuglink/debuglink_view.c', [
         ('v->ch.mode == RADIO_MODE_DMR ? "dmr" : "fm"', 'codeplug_mode_p25(v->ch.mode) ? "p25" : v->ch.mode == RADIO_MODE_DMR ? "dmr" : "fm"'),
