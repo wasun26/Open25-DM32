@@ -179,7 +179,9 @@ def prepare():
     transform("core/input/input.h", [("uint32_t input_raw_keys(void);", "uint32_t input_raw_keys(void);\n#if CONFIG_DEV_TX\nbool input_physical_ptt(void);\nbool input_ptt_down(void);\n#endif")])
     transform("core/radio/radio.h", [
         ("\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)",
-         "\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)\n\tbool standby_led;\t// blink green LED periodically while idle/standby\n\tuint8_t standby_gap_s;\t// standby LED blink interval in seconds (1..30)\n\tuint16_t standby_on_ms;\t// standby LED blink duration in ms (50..1000)\n\tuint8_t led_style;\t// RX/TX LED style: 0 default, 1 Hytera, 2 Motorola"),
+         "\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)\n\tbool standby_led;\t// blink green LED periodically while idle/standby\n\tuint8_t standby_gap_s;\t// standby LED blink interval in seconds (1..30)\n\tuint16_t standby_on_ms;\t// standby LED blink duration in ms (50..1000)\n\tuint8_t led_style;\t// RX/TX LED style: 0 default, 1 Hytera, 2 Motorola\n\tbool auto_sql;\t\t// adaptive FM squelch from channel noise floor"),
+        ("\tuint8_t squelch;\t// 0 = open .. 9 = tight",
+         "\tuint8_t squelch;\t// 0 = open .. 9 = tight\n\tbool auto_sql;\t\t// adaptive FM squelch enabled"),
         ("void radio_req_ptt(bool down);", "void radio_req_ptt(bool down);\n#if CONFIG_DEV_TX\nvoid radio_req_physical_ptt(bool down);\n#endif"),
     ])
     transform("core/radio/radio_task.c", [
@@ -308,7 +310,7 @@ def main():
     b = f"build/dm32-p25-{suffix}"
     command = ["make", "-j8", "BOARD=dm32", f"CROSS={ROOT}/toolchain/bin/csky-elf-", f"BUILD={b}",
         "CONFIG_P25=" + ("n" if args.disable else "y"), "CONFIG_P25_NATIVE="+("y" if native else "n"), "CONFIG_DMR_IP_GATEWAY=n", "CONFIG_NET_PPP=n",
-        "CONFIG_APRS=n", "CONFIG_SFR=n", "CONFIG_HOTSPOT=n", "CONFIG_ZONE_SHARE=n",
+        "CONFIG_APRS="+("y" if args.classic else "n"), "CONFIG_SFR=n", "CONFIG_HOTSPOT=n", "CONFIG_ZONE_SHARE=n",
         'RFOUNDRY_VERSION='+('open25-'+identity if args.classic else 'dfbaf20c-p25-'+identity), f"RFOUNDRY_GIT_TIME={git(UP, 'show', '-s', '--format=%ct', 'HEAD')}",
         "RFOUNDRY_GIT_DIRTY=1",
         "CONFIG_FIRSTBOOT="+("y" if args.first_boot else "n"),
@@ -322,10 +324,11 @@ def main():
     if args.classic:
         command += ['CONFIG_FM=y','CONFIG_DMR=y','CONFIG_CHANNEL_EDIT=y','CONFIG_CPS_OPENFW=y',
                     'CONFIG_CPS_FAST=y','CONFIG_STUB_ENTRY=y','CONFIG_DEBUGLINK=y',
-                    *['CONFIG_'+name+'=n' for name in ('DMR_GPS','DMR_SMS','DMR_TMS','DMR_ARS',
-                      'DMR_LRRP','DMR_SIGNALING','DMR_EMERGENCY','DMR_ROAMING','DMR_UDP_COMPRESS',
-                      'DMR_CONFIRMED','CRASH_REPORT','BCAST_FM','AM_RX','DUAL_WATCH','VOX','GPS',
-                      'LANG_ES','LANG_IT')]]
+                    *['CONFIG_'+name+'=y' for name in ('AM_RX','GPS','DMR_GPS','DMR_SMS',
+                      'DMR_TMS','DMR_ARS','DMR_LRRP','DMR_SIGNALING','DMR_EMERGENCY',
+                      'DMR_ROAMING','DMR_UDP_COMPRESS','DMR_CONFIRMED')],
+                    *['CONFIG_'+name+'=n' for name in ('CRASH_REPORT','BCAST_FM','DUAL_WATCH',
+                      'VOX','LANG_ES','LANG_IT')]]
     if args.first_boot:
         command += ["CONFIG_STUB_ENTRY="+("y" if args.dev_update else "n"), "CONFIG_CPS_OPENFW=n", "CONFIG_CPS_FAST=n", "CONFIG_AUDIO_PROBE=n"]
     log = ROOT / f"logs/radiofoundry-p25-{suffix}.log"

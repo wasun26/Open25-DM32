@@ -175,16 +175,18 @@ static void test_classic_standby_led(void)
     rs.led_style=2;
     radio_sm_set_settings(&sm,&rs,100);
     sm.view.ch.mode=RADIO_MODE_FM;
-    sm.view.state=RS_RX;
     sm.view.monitor=false;
+    signal(40,true);
     radio_sm_poll(&sm,100);
-    CHECK(hw.led[LED_GREEN] && !hw.led[LED_RED]);
+    CHECK(sm.view.state==RS_RX && hw.led[LED_GREEN] && !hw.led[LED_RED]);
     radio_sm_poll(&sm,250);
-    CHECK(!hw.led[LED_GREEN] && !hw.led[LED_RED]);
-    sm.view.state=RS_IDLE;
+    CHECK(sm.view.state==RS_RX && !hw.led[LED_GREEN] && !hw.led[LED_RED]);
+    signal(120,true);
+    radio_sm_poll(&sm,260);
+    radio_sm_poll(&sm,270);
     sm.view.monitor=true;
     radio_sm_poll(&sm,300);
-    CHECK(hw.led[LED_GREEN] && hw.led[LED_RED]);
+    CHECK(sm.view.state==RS_IDLE && hw.led[LED_GREEN] && hw.led[LED_RED]);
 
     /* Hytera style: amber on monitor */
     rs.led_style=1;
@@ -192,9 +194,41 @@ static void test_classic_standby_led(void)
     radio_sm_poll(&sm,350);
     CHECK(hw.led[LED_GREEN] && hw.led[LED_RED]);
 }
+static void test_classic_auto_sql(void)
+{
+    setup_codeplug();start();
+    CHECK(!sm.set.auto_sql);
+    sm.view.ch.mode=RADIO_MODE_FM;
+    sm.view.squelch=5;
+    sm.view.monitor=false;
+
+    /* Manual SQL 5 (open_below = 52) stays closed on noise = 66 */
+    signal(66,true);
+    radio_sm_poll(&sm,100);
+    CHECK(sm.view.state==RS_IDLE);
+
+    /* Enable Auto SQL and sample high VHF noise floor = 84 */
+    radio_settings_t rs=sm.set;
+    rs.auto_sql=true;
+    radio_sm_set_settings(&sm,&rs,110);
+    signal(84,true);
+    radio_sm_poll(&sm,120);
+    CHECK(sm.view.state==RS_IDLE && sm.sql_floor_q8==(84u<<8));
+
+    /* Adaptive threshold is 84 - (8 + 5) = 71: noise = 66 opens cleanly */
+    signal(66,true);
+    radio_sm_poll(&sm,130);
+    CHECK(sm.view.state==RS_RX && hw.audio);
+
+    /* Closes again once noise returns to 84 for RADIO_SQL_CLOSE_POLLS */
+    signal(84,true);
+    radio_sm_poll(&sm,140);
+    radio_sm_poll(&sm,150);
+    CHECK(sm.view.state==RS_IDLE && !hw.audio);
+}
 int main(void)
 {
-    int prior=upstream_radio_main();test_classic_ownership();test_classic_idle_rearm();test_classic_standby_led();
+    int prior=upstream_radio_main();test_classic_ownership();test_classic_idle_rearm();test_classic_standby_led();test_classic_auto_sql();
     printf("Classic real FM/DMR/P25 admission and ownership: %d failures\n",failures);
     return prior || failures ? 1 : 0;
 }

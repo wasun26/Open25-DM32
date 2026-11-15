@@ -144,8 +144,10 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
     transform('core/ui/ui_menus.c', [
         ('static const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };',
          'static const int16_t v_led_style[] = { 0, 1, 2 };\nstatic const char *const n_led_style[] = { TRN("Default"), "Hytera", "Motorola" };\nstatic const int16_t v_backlight[] = { 5, 10, 30, 60, 120, 0 };'),
-        ('\tLIST(TRN("Backlight Dim/Off"), "timeout", UI_SET_BACKLIGHT_S, v_backlight, n_backlight),',
-         '\tLIST(TRN("Backlight Dim/Off"), "timeout", UI_SET_BACKLIGHT_S, v_backlight, n_backlight),\n\tTOGGLE(TRN("Standby LED"), "status blink indicator", UI_SET_STANDBY_LED),\n\tNUMBER(TRN("Standby interval"), "led blink gap", UI_SET_STANDBY_GAP_S, 1, 30, 1, " s"),\n\tNUMBER(TRN("Standby blink"), "led blink duration", UI_SET_STANDBY_ON_MS, 50, 1000, 50, " ms"),\n\tLIST(TRN("LED style"), "hytera motorola status", UI_SET_LED_STYLE, v_led_style, n_led_style),'),
+        ('\tTOGGLE(TRN("Hint row"), "help", UI_SET_HINTS),',
+         '\tTOGGLE(TRN("Hint row"), "help", UI_SET_HINTS),\n\tTOGGLE(TRN("Standby LED"), "status blink indicator", UI_SET_STANDBY_LED),\n\tNUMBER(TRN("Standby interval"), "led blink gap", UI_SET_STANDBY_GAP_S, 1, 30, 1, " s"),\n\tNUMBER(TRN("Standby blink"), "led blink duration", UI_SET_STANDBY_ON_MS, 50, 1000, 50, " ms"),\n\tLIST(TRN("LED style"), "hytera motorola status", UI_SET_LED_STYLE, v_led_style, n_led_style),'),
+        ('#if CONFIG_SFR_CWID\n\tLIST(TRN("SFR CW ID"), "single frequency repeater morse callsign identify", UI_SET_SFR_CWID, v_sfrcwid, n_sfrcwid),\n#endif\n};',
+         '#if CONFIG_SFR_CWID\n\tLIST(TRN("SFR CW ID"), "single frequency repeater morse callsign identify", UI_SET_SFR_CWID, v_sfrcwid, n_sfrcwid),\n#endif\n\tTOGGLE(TRN("Auto squelch"), "ASQ automatic noise floor", UI_SET_AUTO_SQL),\n};'),
         ('ui_toast(i == UI_CP_NEW ? TR("New codeplug started") : TR("Old codeplug kept: edit again"));',
          'ui_toast(i == UI_CP_NEW ? TR("Creating codeplug") : TR("Old codeplug kept: edit again"));'),
         ('static void contacts_item(uint16_t i, ui_item_t *it)', 'static void __attribute__((unused)) contacts_item(uint16_t i, ui_item_t *it)'),
@@ -169,14 +171,24 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
     ])
     transform('core/ui/ui_screens.c', [
         ('return v->ch.mode == RADIO_MODE_DMR ? "DMR" : v->am ? "AM" : "FM";', 'return codeplug_mode_p25(v->ch.mode) ? "P25" : v->ch.mode == RADIO_MODE_DMR ? "DMR" : v->am ? "AM" : "FM";'),
+        ('\t\t\tsb_str(&b, "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);', '\t\t\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);'),
+        ('\tsb_str(&b, "SQ");\n\tsb_u32(&b, v->squelch, 1);', '\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\tsb_u32(&b, v->squelch, 1);'),
+        ('\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_u32(&b, v->squelch, 1);',
+         '\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tif (v->auto_sql && v->squelch > 0)\n\t\t\tsb_str(&b, "A");\n\t\tsb_u32(&b, v->squelch, 1);'),
     ])
     transform('core/ui/ui_svc.h', [
+        ('\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_COUNT',
+         '\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_STANDBY_LED, UI_SET_STANDBY_GAP_S, UI_SET_STANDBY_ON_MS, UI_SET_LED_STYLE, UI_SET_AUTO_SQL,\n\tUI_SET_COUNT'),
         ('} ui_event_kind_t;', '\tUI_EV_CODEPLUG_STARTED,\t// Start new and its held edit finished successfully\n} ui_event_kind_t;'),
-        ('\tUI_SET_BRIGHTNESS, UI_SET_BACKLIGHT_S, UI_SET_THEME, UI_SET_LARGE_TEXT, UI_SET_HINTS,',
-         '\tUI_SET_BRIGHTNESS, UI_SET_BACKLIGHT_S, UI_SET_STANDBY_LED, UI_SET_STANDBY_GAP_S, UI_SET_STANDBY_ON_MS, UI_SET_LED_STYLE, UI_SET_THEME, UI_SET_LARGE_TEXT, UI_SET_HINTS,'),
     ])
     transform('core/ui/ui_app.c', [
         ('\tcase UI_EV_CODEPLUG_FOREIGN:', '\tcase UI_EV_CODEPLUG_STARTED:\n\t\tui_toast(TR("New codeplug started"));\n\t\tbreak;\n\tcase UI_EV_CODEPLUG_FOREIGN:'),
+        ('\tif (view->vfo) {\n\t\tui_toast(TR("VFO settings save automatically"));',
+         '\tif (view->vfo) {\n\t\tif (view->temp & RADIO_TEMP_SQUELCH) {\n\t\t\tui_svc_setting_set(UI_SET_SQUELCH, view->squelch);\n\t\t\tradio_req_clear_temporary();\n\t\t\tui_toast(TR("Squelch saved"));\n\t\t\treturn true;\n\t\t}\n\t\tui_toast(TR("VFO settings save automatically"));'),
+        ('\tdefault:\t// value tiles: squelch, brightness\n\t\tui_st.quick_edit = true;\n\t\tbreak;',
+         '\tcase QT_SQUELCH:\n\t\tui_st.quick_edit = true;\n\t\tui_toast(TR("Up/Dn 0-9  # Auto SQL"));\n\t\tbreak;\n\tdefault:\t// value tiles: brightness\n\t\tui_st.quick_edit = true;\n\t\tbreak;'),
+        ('\tcase ACT_CONTEXT:\n\t\tif (press && ui_st.quick_edit && kind == QT_TONE) {',
+         '\tcase ACT_CONTEXT:\n\t\tif (press && kind == QT_SQUELCH) {\n\t\t\tbool next = !ui_svc_setting_get(UI_SET_AUTO_SQL);\n\t\t\tif (ui_svc_setting_set(UI_SET_AUTO_SQL, next)) {\n\t\t\t\tui_svc_apply(UI_SET_AUTO_SQL, next);\n\t\t\t\tui_toast(next ? TR("Auto SQL on") : TR("Auto SQL off"));\n\t\t\t}\n\t\t\tdirty = true;\n\t\t} else if (press && ui_st.quick_edit && kind == QT_TONE) {'),
     ])
     transform('core/ui/ui_svc_storage.c', [
         ('static void save_failed_text(const char *text)\n{',
@@ -194,13 +206,13 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
 \t\t\tui_notify(&ev);
 \t\t}'''),
         ('\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;',
-         '\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;\n\tcase UI_SET_STANDBY_LED:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_led;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_gap_s;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_on_ms;\n\tcase UI_SET_LED_STYLE:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.led_style;'),
+         '\tcase UI_SET_TALK_PERMIT:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.talk_permit;\n\tcase UI_SET_STANDBY_LED:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_led;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_gap_s;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.standby_on_ms;\n\tcase UI_SET_LED_STYLE:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.led_style;\n\tcase UI_SET_AUTO_SQL:\n\t\tradio_get_settings(&rs);\n\t\treturn rs.auto_sql;'),
         ('\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:',
-         '\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:\n\tcase UI_SET_STANDBY_LED:\n\tcase UI_SET_STANDBY_GAP_S:\n\tcase UI_SET_STANDBY_ON_MS:\n\tcase UI_SET_LED_STYLE:'),
+         '\tcase UI_SET_REPLY_S:\n\tcase UI_SET_TALK_PERMIT:\n\tcase UI_SET_STANDBY_LED:\n\tcase UI_SET_STANDBY_GAP_S:\n\tcase UI_SET_STANDBY_ON_MS:\n\tcase UI_SET_LED_STYLE:\n\tcase UI_SET_AUTO_SQL:'),
     ])
     transform('core/radio/radio_sm.h', [
         ('\tuint32_t batt_ms;\t\t// last battery reading',
-         '\tuint32_t batt_ms;\t\t// last battery reading\n\tuint32_t led_now_ms;\t\t// latest poll timestamp for standby LED blink'),
+         '\tuint32_t batt_ms;\t\t// last battery reading\n\tuint32_t led_now_ms;\t\t// latest poll timestamp for standby LED blink\n\tuint16_t sql_floor_q8;\t\t// adaptive FM noise floor (Q8, 0 = not seeded)\n\tuint8_t sql_settle;\t\t// polls after tune before sampling noise floor'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms);', '''void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms);
 uint8_t radio_sm_tx_check(const radio_sm_t *sm);
 #if CONFIG_P25_CHANNELS
@@ -282,12 +294,71 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
          '\ts->talk_permit = true;\n\ts->standby_gap_s = 5;\n\ts->standby_on_ms = 100;'),
         ('\tif (s->beep_level > 100) {',
          '\tif (s->standby_gap_s == 0) s->standby_gap_s = 5;\n\telse if (s->standby_gap_s > 30) s->standby_gap_s = 30;\n\tif (s->standby_on_ms == 0) s->standby_on_ms = 100;\n\telse if (s->standby_on_ms < 50) s->standby_on_ms = 50;\n\telse if (s->standby_on_ms > 1000) s->standby_on_ms = 1000;\n\tif (s->led_style > 2) s->led_style = 0;\n\tif (s->beep_level > 100) {'),
-        ('\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;',
-         '\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;\n\ts->standby_led = (st->rs_flags & SETTINGS_RS_STANDBY_LED) != 0;\n\ts->standby_gap_s = st->rs_standby_gap_s ? st->rs_standby_gap_s : 5;\n\ts->standby_on_ms = st->rs_standby_on_ms ? st->rs_standby_on_ms : 100;\n\ts->led_style = st->rs_led_style;'),
-        ('\t\t\t\t (s->talk_permit ? 0 : SETTINGS_RS_NO_TALK_PERMIT));',
-         '\t\t\t\t (s->talk_permit ? 0 : SETTINGS_RS_NO_TALK_PERMIT) |\n\t\t\t\t (s->standby_led ? SETTINGS_RS_STANDBY_LED : 0));\n\tst->rs_standby_gap_s = s->standby_gap_s;\n\tst->rs_standby_on_ms = s->standby_on_ms;\n\tst->rs_led_style = s->led_style;'),
+        ('\tsm->set = *s;',
+         '\tif (s->auto_sql != sm->set.auto_sql) { sm->sql_floor_q8 = 0; sm->sql_settle = 0; }\n\tsm->set = *s;\n\tsm->view.auto_sql = sm->set.auto_sql;'),
+        ('\tsm->view.tot_s = sm->set.tot_s;',
+         '\tsm->view.tot_s = sm->set.tot_s;\n\tsm->view.auto_sql = sm->set.auto_sql;'),
+        ('\ts->bcl = st->rs_bcl;\n\ts->roger_beep = (st->rs_flags & SETTINGS_RS_ROGER_BEEP) != 0;\n\ts->tx_inhibit = (st->rs_flags & SETTINGS_RS_TX_INHIBIT) != 0;\n\ts->scan_priority = (st->rs_flags & SETTINGS_RS_SCAN_PRIORITY) != 0;\n\ts->scan_beep = (st->rs_flags & SETTINGS_RS_SCAN_BEEP) != 0;\n\ts->key_beep = (st->rs_flags & SETTINGS_RS_KEY_BEEP) != 0;\n\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;\n\ts->scan_resume = st->rs_scan_resume;',
+         '\ts->bcl = st->rs_bcl & 0x03u;\n\ts->roger_beep = (st->rs_flags & SETTINGS_RS_ROGER_BEEP) != 0;\n\ts->tx_inhibit = (st->rs_flags & SETTINGS_RS_TX_INHIBIT) != 0;\n\ts->scan_priority = (st->rs_flags & SETTINGS_RS_SCAN_PRIORITY) != 0;\n\ts->scan_beep = (st->rs_flags & SETTINGS_RS_SCAN_BEEP) != 0;\n\ts->key_beep = (st->rs_flags & SETTINGS_RS_KEY_BEEP) != 0;\n\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;\n\ts->standby_led = (st->rs_flags & SETTINGS_RS_STANDBY_LED) != 0;\n\ts->auto_sql = (st->rs_flags & SETTINGS_RS_AUTO_SQL) != 0;\n\ts->standby_gap_s = ((st->rs_bcl >> 2) & 0x1Fu) ? (uint8_t)((st->rs_bcl >> 2) & 0x1Fu) : 5u;\n\ts->scan_resume = st->rs_scan_resume & 0x03u;\n\ts->standby_on_ms = ((st->rs_scan_resume >> 2) & 0x1Fu) ? (uint16_t)(((st->rs_scan_resume >> 2) & 0x1Fu) * 50u) : 100u;'),
+        ('\ts->rx_save = st->rs_rx_save;',
+         '\ts->rx_save = st->rs_rx_save & 0x03u;\n\ts->led_style = (st->rs_rx_save >> 2) & 0x03u;'),
+        ('\tst->rs_bcl = s->bcl;\n\tst->rs_flags = (uint8_t)((s->roger_beep ? SETTINGS_RS_ROGER_BEEP : 0) | (s->tx_inhibit ? SETTINGS_RS_TX_INHIBIT : 0) |\n\t\t\t\t (s->scan_priority ? SETTINGS_RS_SCAN_PRIORITY : 0) |\n\t\t\t\t (s->scan_beep ? SETTINGS_RS_SCAN_BEEP : 0) | (s->key_beep ? SETTINGS_RS_KEY_BEEP : 0) |\n\t\t\t\t (s->talk_permit ? 0 : SETTINGS_RS_NO_TALK_PERMIT));\n\tst->rs_scan_resume = s->scan_resume;',
+         '\tuint8_t gap = s->standby_gap_s <= 30u ? s->standby_gap_s : 30u;\n\tuint8_t on50 = (uint8_t)(s->standby_on_ms / 50u);\n\tif (on50 > 20u) on50 = 20u;\n\tst->rs_bcl = (uint8_t)((s->bcl & 0x03u) | ((gap & 0x1Fu) << 2));\n\tst->rs_flags = (uint8_t)((s->roger_beep ? SETTINGS_RS_ROGER_BEEP : 0) | (s->tx_inhibit ? SETTINGS_RS_TX_INHIBIT : 0) |\n\t\t\t\t (s->scan_priority ? SETTINGS_RS_SCAN_PRIORITY : 0) |\n\t\t\t\t (s->scan_beep ? SETTINGS_RS_SCAN_BEEP : 0) | (s->key_beep ? SETTINGS_RS_KEY_BEEP : 0) |\n\t\t\t\t (s->talk_permit ? 0 : SETTINGS_RS_NO_TALK_PERMIT) |\n\t\t\t\t (s->standby_led ? SETTINGS_RS_STANDBY_LED : 0) |\n\t\t\t\t (s->auto_sql ? SETTINGS_RS_AUTO_SQL : 0));\n\tst->rs_scan_resume = (uint8_t)((s->scan_resume & 0x03u) | ((on50 & 0x1Fu) << 2));'),
+        ('\tst->rs_rx_save = s->rx_save;',
+         '\tst->rs_rx_save = (uint8_t)((s->rx_save & 0x03u) | ((s->led_style & 0x03u) << 2));'),
         ('\tmemset(sm, 0, sizeof(*sm));',
          '\tmemset(sm, 0, sizeof(*sm));\n\tsm->led_now_ms = now_ms;'),
+        ('\tsm->retune_pending = sm->retune_due = false;\t// this tune is the one they wait for\n#if CONFIG_SFR_CWID\n\tcw_cancel(sm);\t\t// the repeater\'s ID: the board is set up for the channel below\n#endif\n\tend_reception(sm, now_ms);',
+         '\tsm->retune_pending = sm->retune_due = false;\t// this tune is the one they wait for\n#if CONFIG_SFR_CWID\n\tcw_cancel(sm);\t\t// the repeater\'s ID: the board is set up for the channel below\n#endif\n\tend_reception(sm, now_ms);\n\tsm->sql_floor_q8 = 0;\n\tsm->sql_settle = 3;'),
+        ('static bool carrier_heard(const radio_sm_t *sm, uint8_t noise)\n{\n\tuint8_t sq = sm->view.squelch != 0 ? sm->view.squelch : RADIO_SQUELCH_DEFAULT;\n\treturn noise < radio_sm_squelch_open_below(sq);\n}',
+         '''static uint8_t squelch_open_below(const radio_sm_t *sm, uint8_t sq)
+{
+\tif (sq == 0) {
+\t\treturn 255;
+\t}
+\tif (sm->set.auto_sql && sm->sql_floor_q8 != 0 && !sm->view.am && !sm->view.bcast && !scan_on(&sm->scan)) {
+\t\tuint16_t floor = (uint16_t)((sm->sql_floor_q8 + 128u) >> 8);
+\t\tuint16_t margin = 8u + (sq > RADIO_SQUELCH_MAX ? RADIO_SQUELCH_MAX : sq);
+\t\tuint16_t thresh = floor > margin ? (uint16_t)(floor - margin) : 16u;
+\t\tif (thresh < 16u) thresh = 16u;
+\t\tif (thresh > 120u) thresh = 120u;
+\t\treturn (uint8_t)thresh;
+\t}
+\treturn radio_sm_squelch_open_below(sq);
+}
+
+static void auto_sql_update(radio_sm_t *sm, uint8_t noise, uint8_t sq)
+{
+\tif (!sm->set.auto_sql || sq == 0 || sm->view.am || sm->view.bcast ||
+\t    scan_on(&sm->scan) || sm->view.state != RS_IDLE || sm->view.monitor) {
+\t\treturn;
+\t}
+\tif (sm->sql_settle > 0) {
+\t\tsm->sql_settle--;
+\t\treturn;
+\t}
+\tuint16_t n_q8 = (uint16_t)noise << 8;
+\tif (sm->sql_floor_q8 == 0) {
+\t\tif (noise >= radio_sm_squelch_open_below(sq)) {
+\t\t\tsm->sql_floor_q8 = n_q8;
+\t\t}
+\t\treturn;
+\t}
+\tuint8_t open_below = squelch_open_below(sm, sq);
+\tif (n_q8 >= sm->sql_floor_q8) {
+\t\tsm->sql_floor_q8 = (uint16_t)(sm->sql_floor_q8 + ((n_q8 - sm->sql_floor_q8) >> 5));
+\t} else if (noise >= open_below) {
+\t\tsm->sql_floor_q8 = (uint16_t)(sm->sql_floor_q8 - ((sm->sql_floor_q8 - n_q8) >> 4));
+\t}
+}
+
+static bool carrier_heard(const radio_sm_t *sm, uint8_t noise)
+{
+\tuint8_t sq = sm->view.squelch != 0 ? sm->view.squelch : RADIO_SQUELCH_DEFAULT;
+\treturn noise < squelch_open_below(sm, sq);
+}'''),
+        ('\tuint8_t open_below = radio_sm_squelch_open_below(sq);',
+         '\tif (!dual_peeking(sm)) auto_sql_update(sm, st.noise, sq);\n\tuint8_t open_below = squelch_open_below(sm, sq);'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)', '''#if CONFIG_P25_CHANNELS
 void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms)
 {
@@ -308,14 +379,12 @@ void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)'''),
          '\tif (sm->dmr_running) {\n\t\toutputs(sm);\n\t\treturn;\t\t// the state follows the call stack (radio_sm_tick), and the stack keeps its own TX time-out\n\t}'),
     ])
     transform('core/settings/settings.h', [
-        ('\tsettings_zs_import_t zs_import[SETTINGS_ZS_IMPORTS];\n} settings_t;',
-         '\tsettings_zs_import_t zs_import[SETTINGS_ZS_IMPORTS];\n\tuint8_t rs_standby_gap_s;\n\tuint16_t rs_standby_on_ms;\n\tuint8_t rs_led_style;\n} settings_t;'),
         ('#define SETTINGS_RS_NO_TALK_PERMIT\t0x20u\t// the talk permit tone off (0 = on, as before)',
-         '#define SETTINGS_RS_NO_TALK_PERMIT\t0x20u\t// the talk permit tone off (0 = on, as before)\n#define SETTINGS_RS_STANDBY_LED\t\t0x40u\t// periodic green LED blink while idle/standby'),
+         '#define SETTINGS_RS_NO_TALK_PERMIT\t0x20u\t// the talk permit tone off (0 = on, as before)\n#define SETTINGS_RS_STANDBY_LED\t\t0x40u\t// periodic green LED blink while idle/standby\n#define SETTINGS_RS_AUTO_SQL\t\t0x80u\t// adaptive FM squelch from channel noise floor'),
     ])
     transform('core/ui/ui_svc_radio.c', [
         ('\tcase UI_SET_TALK_PERMIT:\n\t\trs.talk_permit = value != 0;\n\t\tbreak;',
-         '\tcase UI_SET_TALK_PERMIT:\n\t\trs.talk_permit = value != 0;\n\t\tbreak;\n\tcase UI_SET_STANDBY_LED:\n\t\trs.standby_led = value != 0;\n\t\tbreak;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\trs.standby_gap_s = (uint8_t)(value < 1 ? 1 : value > 30 ? 30 : value);\n\t\tbreak;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\trs.standby_on_ms = (uint16_t)(value < 50 ? 50 : value > 1000 ? 1000 : value);\n\t\tbreak;\n\tcase UI_SET_LED_STYLE:\n\t\trs.led_style = (uint8_t)(value < 0 || value > 2 ? 0 : value);\n\t\tbreak;'),
+         '\tcase UI_SET_TALK_PERMIT:\n\t\trs.talk_permit = value != 0;\n\t\tbreak;\n\tcase UI_SET_STANDBY_LED:\n\t\trs.standby_led = value != 0;\n\t\tbreak;\n\tcase UI_SET_STANDBY_GAP_S:\n\t\trs.standby_gap_s = (uint8_t)(value < 1 ? 1 : value > 30 ? 30 : value);\n\t\tbreak;\n\tcase UI_SET_STANDBY_ON_MS:\n\t\trs.standby_on_ms = (uint16_t)(value < 50 ? 50 : value > 1000 ? 1000 : value);\n\t\tbreak;\n\tcase UI_SET_LED_STYLE:\n\t\trs.led_style = (uint8_t)(value < 0 || value > 2 ? 0 : value);\n\t\tbreak;\n\tcase UI_SET_AUTO_SQL:\n\t\trs.auto_sql = value != 0;\n\t\tbreak;'),
     ])
     transform('core/debuglink/debuglink_view.c', [
         ('v->ch.mode == RADIO_MODE_DMR ? "dmr" : "fm"', 'codeplug_mode_p25(v->ch.mode) ? "p25" : v->ch.mode == RADIO_MODE_DMR ? "dmr" : "fm"'),
