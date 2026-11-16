@@ -181,7 +181,7 @@ def prepare():
         ("\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)",
          "\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)\n\tbool standby_led;\t// blink green LED periodically while idle/standby\n\tuint8_t standby_gap_s;\t// standby LED blink interval in seconds (1..30)\n\tuint16_t standby_on_ms;\t// standby LED blink duration in ms (50..1000)\n\tuint8_t led_style;\t// RX/TX LED style: 0 default, 1 Hytera, 2 Motorola\n\tbool auto_sql;\t\t// adaptive FM squelch from channel noise floor"),
         ("\tuint8_t squelch;\t// 0 = open .. 9 = tight",
-         "\tuint8_t squelch;\t// 0 = open .. 9 = tight\n\tbool auto_sql;\t\t// adaptive FM squelch enabled"),
+         "\tuint8_t squelch;\t// 0 = open .. 9 = tight\n\tbool auto_sql;\t\t// adaptive FM squelch enabled\n\tuint8_t sql_eff;\t// effective ASQ level (1..9) when auto_sql is active"),
         ("void radio_req_ptt(bool down);", "void radio_req_ptt(bool down);\n#if CONFIG_DEV_TX\nvoid radio_req_physical_ptt(bool down);\n#endif"),
     ])
     transform("core/radio/radio_task.c", [

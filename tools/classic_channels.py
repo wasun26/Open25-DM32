@@ -173,10 +173,16 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
     ])
     transform('core/ui/ui_screens.c', [
         ('return v->ch.mode == RADIO_MODE_DMR ? "DMR" : v->am ? "AM" : "FM";', 'return codeplug_mode_p25(v->ch.mode) ? "P25" : v->ch.mode == RADIO_MODE_DMR ? "DMR" : v->am ? "AM" : "FM";'),
-        ('\t\t\tsb_str(&b, "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);', '\t\t\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);'),
-        ('\tsb_str(&b, "SQ");\n\tsb_u32(&b, v->squelch, 1);', '\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\tsb_u32(&b, v->squelch, 1);'),
+        ('\t\t\tsb_str(&b, "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);',
+         '\t\t\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);\n\t\t\tbool asq_shift = v->auto_sql && v->squelch > 0 && v->sql_eff > 0 && v->sql_eff != v->squelch;\n\t\t\tif (asq_shift) {\n\t\t\t\tsb_str(&b, v->sql_eff > v->squelch ? ">" : "<");\n\t\t\t\tsb_u32(&b, v->sql_eff, 1);\n\t\t\t}'),
+        ('\t\t\tif (x + gfx_text_width(f, buf) <= w)\n\t\t\t\tgfx_text(f, x, y, buf, ui_col.fg);',
+         '\t\t\tif (x + gfx_text_width(f, buf) <= w)\n\t\t\t\tgfx_text(f, x, y, buf, asq_shift ? ui_col.warn : ui_col.fg);'),
+        ('\tsb_str(&b, "SQ");\n\tsb_u32(&b, v->squelch, 1);',
+         '\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\tsb_u32(&b, v->squelch, 1);\n\tbool asq_shift = v->auto_sql && v->squelch > 0 && v->sql_eff > 0 && v->sql_eff != v->squelch;\n\tif (asq_shift) {\n\t\tsb_str(&b, v->sql_eff > v->squelch ? ">" : "<");\n\t\tsb_u32(&b, v->sql_eff, 1);\n\t}'),
+        ('\tif (x + gfx_text_width(f, buf) <= w)\n\t\tgfx_text(f, x, y, buf, ui_col.fg);',
+         '\tif (x + gfx_text_width(f, buf) <= w)\n\t\tgfx_text(f, x, y, buf, asq_shift ? ui_col.warn : ui_col.fg);'),
         ('\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_u32(&b, v->squelch, 1);',
-         '\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tif (v->auto_sql && v->squelch > 0)\n\t\t\tsb_str(&b, "A");\n\t\tsb_u32(&b, v->squelch, 1);'),
+         '\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tif (v->auto_sql && v->squelch > 0)\n\t\t\tsb_str(&b, "A");\n\t\tsb_u32(&b, v->squelch, 1);\n\t\tif (v->auto_sql && v->squelch > 0 && v->sql_eff > 0 && v->sql_eff != v->squelch) {\n\t\t\tsb_str(&b, v->sql_eff > v->squelch ? ">" : "<");\n\t\t\tsb_u32(&b, v->sql_eff, 1);\n\t\t}'),
     ])
     transform('core/ui/ui_svc.h', [
         ('\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_COUNT',
@@ -334,10 +340,13 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
 \t}
 \tif (sm->set.auto_sql && sm->sql_floor_q8 != 0 && !sm->view.bcast && !scan_on(&sm->scan)) {
 \t\tuint16_t floor = (uint16_t)((sm->sql_floor_q8 + 128u) >> 8);
-\t\tuint16_t margin = 8u + (sq > RADIO_SQUELCH_MAX ? RADIO_SQUELCH_MAX : sq);
-\t\tuint16_t thresh = floor > margin ? (uint16_t)(floor - margin) : 16u;
-\t\tif (thresh < 16u) thresh = 16u;
-\t\tif (thresh > 120u) thresh = 120u;
+\t\tuint16_t sq_c = sq > RADIO_SQUELCH_MAX ? RADIO_SQUELCH_MAX : sq;
+\t\tuint16_t margin = sm->view.am ? (uint16_t)(3u + (sq_c >> 1)) : (uint16_t)(8u + sq_c);
+\t\tuint16_t min_t = sm->view.am ? 40u : 16u;
+\t\tuint16_t max_t = sm->view.am ? 64u : 120u;
+\t\tuint16_t thresh = floor > margin ? (uint16_t)(floor - margin) : min_t;
+\t\tif (thresh < min_t) thresh = min_t;
+\t\tif (thresh > max_t) thresh = max_t;
 \t\treturn (uint8_t)thresh;
 \t}
 \treturn radio_sm_squelch_open_below(sq);
@@ -372,9 +381,28 @@ static bool carrier_heard(const radio_sm_t *sm, uint8_t noise)
 {
 \tuint8_t sq = sm->view.squelch != 0 ? sm->view.squelch : RADIO_SQUELCH_DEFAULT;
 \treturn noise < squelch_open_below(sm, sq);
+}
+
+static uint8_t squelch_eff_level(const radio_sm_t *sm, uint8_t sq)
+{
+\tif (sq == 0 || !sm->set.auto_sql || sm->sql_floor_q8 == 0 || sm->view.bcast || scan_on(&sm->scan)) {
+\t\treturn sq;
+\t}
+\tuint8_t thresh = squelch_open_below(sm, sq);
+\tuint8_t best = 1u;
+\tuint8_t best_diff = 255u;
+\tfor (uint8_t lv = 1u; lv <= RADIO_SQUELCH_MAX; lv++) {
+\t\tuint8_t ref = radio_sm_squelch_open_below(lv);
+\t\tuint8_t diff = ref > thresh ? (uint8_t)(ref - thresh) : (uint8_t)(thresh - ref);
+\t\tif (diff < best_diff) {
+\t\t\tbest_diff = diff;
+\t\t\tbest = lv;
+\t\t}
+\t}
+\treturn best;
 }'''),
         ('\tuint8_t open_below = radio_sm_squelch_open_below(sq);',
-         '\tif (!dual_peeking(sm)) auto_sql_update(sm, st.noise, sq);\n\tuint8_t open_below = squelch_open_below(sm, sq);'),
+         '\tif (!dual_peeking(sm)) auto_sql_update(sm, st.noise, sq);\n\tuint8_t eff_sq = squelch_eff_level(sm, sq);\n\tif (eff_sq != sm->view.sql_eff) { sm->view.sql_eff = eff_sq; changed(sm); }\n\tuint8_t open_below = squelch_open_below(sm, sq);'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)', '''#if CONFIG_P25_CHANNELS
 void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms)
 {
