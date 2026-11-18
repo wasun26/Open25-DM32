@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Reuse actual GPIO, DAC, flash/NOR, FD6818 and IRQ fixtures. */
 #define main guard_fixture_main
 #include "test_guards.c"

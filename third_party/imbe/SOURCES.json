@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "implementation": "Full-rate P25 Phase1 IMBE fixed-point C",
+  "project_code_license": "MIT",
+  "reference": {
+    "document": "TIA-102.BABA-A-2014, Project25 Vocoder Description",
+    "publisher_url": "https://connect.tiaonline.org/viewdocument/tia-102baba-a-vocoder-descriptio",
+    "scope": "Full-rate mathematical description; sections5-12 and AnnexesA-K as applicable"
+  },
+  "source_origins": {
+    "src/codec.c": "Project-authored existing C ABI, context ownership, validation and packing",
+    "src/encoder.c": "Project-authored fixed-point analysis expressions; generated windows and identified AnnexD FIR",
+    "src/quant.c": "Project-authored parameter mapping, fixed-point quantization, predictor and priority scan",
+    "src/quant_tables.inc": "Identified published numerical facts from AnnexesE/F/G; not claimed as original project numerical data",
+    "src/decoder.c": "Project-authored enhancement, clean-frame synthesis, instance-owned phase/noise and overlap",
+    "src/fft.c": "Project-authored mathematical FFT/real-transform expressions and formula-generated full-cycle sine table",
+    "src/math.c": "Project-authored fixed-point mathematical functions and formula-generated log/exp tables",
+    "runtime/memory.c": "Retained project-authored MIT freestanding memory implementation",
+    "tests/": "Project-authored mathematical, synthesized-signal, functional-layout, state and hostile-input tests"
+  },
+  "published_numeric_inputs": [
+    {
+      "symbol": "src/encoder.c:pitch_fir",
+      "source": "AnnexD p83",
+      "count": 11,
+      "meaning": "symmetric half of21 FIR taps, roundedQ15"
+    },
+    {
+      "symbol": "src/quant_tables.inc:gain_q11",
+      "source": "AnnexE p84",
+      "count": 64,
+      "meaning": "gain reconstruction levels roundedQ11"
+    },
+    {
+      "symbol": "src/quant_tables.inc:gain_alloc_nibbles",
+      "source": "AnnexF pp85-88",
+      "values": 240,
+      "bytes": 120
+    },
+    {
+      "symbol": "src/quant.c:gain_sigma_milli and step_centi",
+      "source": "AnnexF pp85-88 andTable3 p28",
+      "meaning": "checked exact compression of240 published decimal steps"
+    },
+    {
+      "symbol": "src/quant_tables.inc:hoc_alloc_nibbles",
+      "source": "AnnexG pp89-101",
+      "values": 1272,
+      "bytes": 636
+    },
+    {
+      "symbol": "src/quant.c:hoc_sigma_milli",
+      "source": "Table4 p28",
+      "count": 9
+    }
+  ],
+  "formula_generated": [
+    "Kaiser windows301/beta5.25 and221/beta6; squared coarse window and response/sum scalars",
+    "FFT full-cycle sine, DCT cosine phases, log2 and exp2 interpolation tables",
+    "Pitch/L/K and residual-block partition; partition verified against AnnexJ",
+    "Piecewise-linear AnnexI synthesis window and derived unvoiced normalization",
+    "Recommended mathematical noise recurrence, initialization and phase mapping"
+  ],
+  "numerical_provenance": "quant-provenance.md",
+  "runtime_external_codec_dependencies": [],
+  "external_host_only_oracles": [
+    {
+      "name": "Pavel Yazev imbe_vocoder",
+      "repository": "https://github.com/nostar/imbe_vocoder",
+      "license": "GPL-3.0-or-later",
+      "runtime": false,
+      "included_in_standalone_tests": false
+    },
+    {
+      "name": "mbelib",
+      "repository": "https://github.com/szechyjs/mbelib",
+      "license": "ISC",
+      "runtime": false,
+      "included_in_standalone_tests": false
+    }
+  ],
+  "ownership": {
+    "codec_state": "caller-owned serialized half-duplex context",
+    "predictor_and_word_widths": "quantizer",
+    "analysis_and_tail_frames": "encoder",
+    "phase_noise_and_enhanced_amplitudes": "decoder",
+    "application": "frame admission, air framing/FEC, scheduling and audio IO",
+    "refresh": "Classic and Next vendor exact committed owner snapshots and refresh copied public header/runtime together"
+  }
+}

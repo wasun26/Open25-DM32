@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "config.h"
 #if CONFIG_DEV_TX
 #include "firstboot.h"

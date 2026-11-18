@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later
+/* SPDX-License-Identifier: MIT
  * Deterministic sanitizer exercise for packet lengths, corrupt data, APIs.
  */
 #include "p25.h"

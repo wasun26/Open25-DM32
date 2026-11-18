@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Host test double only. */
 typedef void *SemaphoreHandle_t;
 SemaphoreHandle_t xSemaphoreCreateMutex(void);

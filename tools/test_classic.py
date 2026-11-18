@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Classic saved-channel and real radio-state-machine regression tests."""
 from pathlib import Path
 import subprocess
@@ -17,13 +17,29 @@ def run(args, **kw):
     return subprocess.run([str(a) for a in args],check=True,**kw)
 
 def main():
+    run(['python3',ROOT/'tools/sources.py','verify-vendored'],cwd=ROOT)
     run(['python3',ROOT/'tools/build_radiofoundry.py','--prepare-only'],cwd=ROOT)
     OUT.mkdir(parents=True,exist_ok=True)
     host=APP/'tests/host'
+    # VERSION must advertise the saved-channel capability, not the lab engine.
+    # Link the real handler/formatter/build_info; unused radio commands are discarded.
+    for p25, channels in [(0, 0), (1, 0), (1, 1)]:
+        version=OUT/f'test_version_{p25}_{channels}'
+        run(['clang','-std=gnu99','-Wall','-Wextra','-Wno-unused-parameter','-g',
+             '-fsanitize=address,undefined','-fno-sanitize-recover=undefined',
+             '-ffunction-sections','-fdata-sections','-D__attribute__(x)=',
+             f'-DCONFIG_P25={p25}',f'-DCONFIG_P25_CHANNELS={channels}',
+             '-I'+str(APP/'core'),'-I'+str(APP/'drivers'),'-I'+str(APP/'hal'),
+             ROOT/'tests/classic/test_version.c',APP/'core/hostlink/build_info.c',
+             APP/'core/debuglink/dl_fmt.c',
+             '-Wl,-dead_strip' if sys.platform=='darwin' else '-Wl,--gc-sections',
+             '-o',version],cwd=ROOT)
+        run([version],cwd=ROOT)
     flags=['-std=gnu99','-Wall','-Wextra','-Wno-unused-parameter','-g',
            '-fsanitize=address,undefined','-fno-sanitize-recover=undefined','-fno-omit-frame-pointer',
            '-I'+str(APP/'core'),'-I'+str(APP/'drivers'),'-I'+str(APP/'hal'),'-I'+str(host),
-           '-D__attribute__(x)=','-DCONFIG_P25_CHANNELS=1','-DCONFIG_P25_NATIVE=1']
+           '-I'+str(ROOT/'third_party/p25cai/include'),
+           '-D__attribute__(x)=','-DCONFIG_P25_CHANNELS=1','-DCONFIG_P25_NATIVE=1','-DCONFIG_P25=1']
     run(['clang',*flags,'-ffunction-sections','-fdata-sections','-DCONFIG_DEV_TX=1',
          '-DCONFIG_P25_BENCH=0','-I'+str(ROOT/'tests/audio/stubs'),
          '-I'+str(APP/'core/p25'),ROOT/'tests/classic/test_p25_audio.c',
@@ -31,14 +47,14 @@ def main():
          '-Wl,-dead_strip' if sys.platform=='darwin' else '-Wl,--gc-sections',
          '-o',OUT/'test_p25_audio'],cwd=ROOT)
     run([OUT/'test_p25_audio'],cwd=ROOT)
-    run(['clang',*flags,ROOT/'tests/classic/test_channels.c',APP/'core/codeplug/codeplug.c',
+    run(['clang',*flags,ROOT/'tests/classic/test_channels.c',APP/'core/codeplug/codeplug.c',APP/'core/codeplug/codeplug_kv.c',APP/'core/codeplug/codeplug_tag.c',APP/'core/codeplug/codeplug_records.c',APP/'core/p25/p25_codeplug.c',APP/'core/codeplug/codeplug_talk.c',
          APP/'core/storage/storage.c',host/'sim/sim_flash.c','-o',OUT/'test_channels'],cwd=ROOT)
     run([OUT/'test_channels'],cwd=ROOT)
     # Link the actual UI storage job to the actual settings/codeplug/journal owners.
     run(['clang',*flags,'-ffunction-sections','-fdata-sections',
          '-DCONFIG_ZONE_EDIT=0','-DCONFIG_CONTACT_EDIT=0','-DCONFIG_KEY_ASSIGN=0',
          ROOT/'tests/classic/test_start_new.c',APP/'core/ui/ui_svc_storage.c',
-         APP/'core/codeplug/codeplug.c',APP/'core/settings/settings.c',
+         APP/'core/codeplug/codeplug.c',APP/'core/codeplug/codeplug_kv.c',APP/'core/codeplug/codeplug_tag.c',APP/'core/codeplug/codeplug_records.c',APP/'core/p25/p25_codeplug.c',APP/'core/codeplug/codeplug_talk.c',APP/'core/settings/settings.c',
          APP/'core/storage/storage.c',host/'sim/sim_flash.c',
          '-Wl,-dead_strip' if sys.platform=='darwin' else '-Wl,--gc-sections',
          '-o',OUT/'test_start_new'],cwd=ROOT)
@@ -51,7 +67,8 @@ def main():
                 data.write_bytes(archive.read('data.bin'))
             run([OUT/'test_start_new',data],cwd=ROOT)
     # Run the existing comprehensive FM/DMR suite against the transformed core.
-    run(['make','-B','fd6818Test','SANITIZE=1'],cwd=host)
+    run(['make','-B','fd6818Test','SANITIZE=1',
+         'RFBUS='+str(APP/'drivers/rf/rfbus/rfbus.c')+' '+str(APP/'drivers/rf/fd6818/fd6818_setup_b.c')],cwd=host)
     run([host/'fd6818Test'],cwd=host)
     run(['make','-B','hrc7000DmrTest','SANITIZE=1'],cwd=host)
     run([host/'hrc7000DmrTest'],cwd=host)
@@ -59,6 +76,13 @@ def main():
     run([host/'radioCoreTest'],cwd=host)
     fixture=(host/'radioCoreTest.c').read_text().replace('int main(void)','int upstream_radio_main(void)')
     fixture=fixture.replace('const board_t board = {','const board_t board = {\n\t.native_modem=&classic_ops,')
+    # Compile the generated radio task's real service/retained-request dispatch.
+    task=(APP/'core/radio/radio_task.c').read_text()
+    first=task.index('\tfor (;;) {')+len('\tfor (;;) {')
+    service=task[first:task.index('\n\t\tTickType_t due',first)]
+    first=task.index('        if (retained_request ||')
+    dispatch=task[first:task.index('\n\t\tTickType_t now',first)]
+    (OUT/'classic_dispatch.inc').write_text(service+'\n'+dispatch+'\n')
     wrapper=OUT/'radioCoreClassic.c'
     wrapper.write_text('#include "native_modem/native_lab.h"\nextern const nt_ops classic_ops;\n'+fixture+
                        '\n#include "'+str(ROOT/'tests/classic/test_radio.inc')+'"\n')
@@ -66,9 +90,9 @@ def main():
     argv=shlex.split(next(line for line in command.splitlines() if ' -o radioCoreTest ' in line))
     argv[argv.index('radioCoreTest.c')]=str(wrapper)
     argv[argv.index('-o')+1]=str(OUT/'test_radio')
-    argv+=['-I'+str(host),'-I'+str(ROOT/'tests/native/stubs'),'-I'+str(APP/'core'),
+    argv+=['-I'+str(OUT),'-I'+str(host),'-I'+str(ROOT/'tests/native/stubs'),'-I'+str(APP/'core'),
            '-I'+str(ROOT/'src/modem'),'-I'+str(ROOT/'integration/radiofoundry'),
-           '-DCONFIG_P25_CHANNELS=1','-DCONFIG_P25_NATIVE=1','-DCONFIG_DEV_TX=1',
+           '-DCONFIG_P25_CHANNELS=1','-DCONFIG_P25_NATIVE=1','-DCONFIG_P25=1','-DCONFIG_DEV_TX=1',
            str(ROOT/'src/modem/native_test.c'),str(ROOT/'integration/radiofoundry/native/native_lab.c')]
     run(argv,cwd=host)
     run([OUT/'test_radio'],cwd=host)

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Synthetic independent IRQ phases through the real controller. */
 #include "native_test.h"
 #include <assert.h>

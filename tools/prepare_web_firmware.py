@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Package a verified codec-free Classic application for the Firmware Utility."""
 import argparse
 import hashlib

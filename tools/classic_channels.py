@@ -1,11 +1,16 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-"""Conventional P25 fields in RadioFoundry's existing channel store/editor."""
+# SPDX-License-Identifier: MIT
+# Portions Copyright (c) 2026 The RadioFoundry Authors; see LICENSES/RadioFoundry-MIT.txt.
+"""Classic channel fields, UI identity and display defaults."""
+
+from pathlib import Path
 
 
 def prepare(transform):
-    transform('drivers/rf/fd6818/fd6818.c', [
-        ('static const regval_t dmr_table[] = {', '''static const regval_t dmr_table[] = {
-\t{ 0x51, 0x0000 }, // FM tone detection also enables subaudio TX; digital modulation comes from the C7000.'''),
+    # Replace the original splash through the pinned source's existing entry point.
+    screens=(Path(__file__).resolve().parents[1]/'research/upstream/radiofoundry/core/ui/ui_screens.c').read_text()
+    boot=screens[screens.index('// --- boot splash ---'):screens.index('// --- Home ---')]
+    transform('core/settings/settings.c', [
+        ('s->brightness = 100;', 's->brightness = 100;\n\ts->theme = 1; // Classic defaults to dark text on white.'),
     ])
     transform('tests/host/fd6818Test.c', [
         ('static void test_rx_tones(void)', '''static void test_tone_to_dmr(void)
@@ -13,9 +18,10 @@ def prepare(transform):
 \tconst fd6818_tone_t tones[] = { FD6818_TONE_CTCSS, FD6818_TONE_DCS, FD6818_TONE_DCS_INV };
 \tconst uint16_t values[] = { 1000, 023, 023 };
 \tconst uint16_t enabled[] = { 0x9045, 0x8045, 0xA045 };
-\tfor (unsigned t = 0; t < sizeof tones / sizeof tones[0]; t++) {
+\tconst fd6818_variant_t *variants[] = { &fd6818_variant_default, &fd6818_variant_b_dmr6943 };
+\tfor (unsigned v = 0; v < 2; v++) for (unsigned t = 0; t < sizeof tones / sizeof tones[0]; t++) {
 \t\tfd6818_t dev;
-\t\treset_chip();fd6818_attach(&dev, bus());
+\t\treset_chip();fd6818_attach_variant(&dev, bus(), variants[v]);
 \t\tfd6818_set_mode(&dev, FD6818_MODE_FM);
 \t\tfd6818_set_freq(&dev, 146520000u);
 \t\tfd6818_set_rx_tone(&dev, tones[t], values[t]);
@@ -86,55 +92,45 @@ typedef struct {
 \tchar name[CODEPLUG_NAME_LEN + 1];
 \tuint32_t rx_hz;'''),
         ('\tuint16_t contact;\t// talk target contact index, 0 = none\n\tuint16_t listen_list;\t// RX group list index, 0 = none\n\tuint32_t dmr_id;\t// own DMR ID for this channel, 0 = the radio\'s', '''#if CONFIG_P25_CHANNELS
-\tunion {
-\t\tstruct { uint16_t contact, listen_list; uint32_t dmr_id; };
-\t\tstruct { uint16_t p25_tg, p25_nac; uint32_t p25_id; };
-\t};
+	uint16_t contact, listen_list;
+	uint32_t dmr_id;
+	uint16_t p25_tg, p25_nac;
+	uint8_t p25_squelch;
+	uint32_t p25_id;
+	uint16_t p25_tx_nac_override; /* zero inherits RX; otherwise TX NAC + 1 */
 #else
-\tuint16_t contact, listen_list;
-\tuint32_t dmr_id;
+	uint16_t contact, listen_list;
+	uint32_t dmr_id;
 #endif'''),
         ('} channel_t;', '''} channel_t;
 
 static inline bool codeplug_mode_p25(uint8_t mode)
 {
 #if CONFIG_P25_CHANNELS
-\treturn mode == RADIO_MODE_P25;
+	return mode == RADIO_MODE_P25;
 #else
-\t(void)mode;
-\treturn false;
+	(void)mode;
+	return false;
 #endif
 }
 #if CONFIG_P25_CHANNELS
+static inline uint16_t codeplug_p25_tx_nac(const channel_t *ch)
+{
+    if (!ch->p25_tx_nac_override) return ch->p25_nac;
+    return (uint16_t)(ch->p25_tx_nac_override - 1u);
+}
 static inline bool codeplug_p25_valid(const channel_t *ch)
 {
-\treturn ch->bw == RADIO_BW_12K5 && ch->p25_nac <= 0xFFFu &&
-\t       ch->p25_nac != 0xF7Fu && ch->p25_id <= 9999999u &&
-\t       (ch->rx_only || (ch->p25_nac != 0xF7Eu && ch->p25_tg && ch->p25_id));
+	uint16_t tx_nac=codeplug_p25_tx_nac(ch);
+	return ch->bw == RADIO_BW_12K5 && ch->p25_nac <= 0xFFFu &&
+	       ch->p25_nac != 0xF7Fu && ch->p25_id <= 0xFFFFFEu &&
+	       (!ch->p25_tx_nac_override || (tx_nac < 0x1000u && tx_nac != 0xF7Eu && tx_nac != 0xF7Fu)) &&
+	       (ch->rx_only || (tx_nac != 0xF7Eu && ch->p25_tg && ch->p25_id));
 }
 #endif'''),
     ])
     transform('core/codeplug/codeplug.c', [
-        ('\tmemset(out, 0, sizeof(*out));\n\tif (!freq(&r[CH_RX]', '\tmemset(out, 0, sizeof(*out));\n#if CONFIG_P25_CHANNELS\n\tif (r[CH_MODE] != 0 && r[CH_MODE] != 1 && r[CH_MODE] != 0xA5u) return false;\n#endif\n\tif (!freq(&r[CH_RX]'),
-        ('\tout->alias_tx = (uint8_t)', '''#if CONFIG_P25_CHANNELS
-\tif (r[CH_MODE] == 0xA5u) {
-\t\tout->mode = RADIO_MODE_P25;
-\t\tout->p25_nac = (uint16_t)(((r[CH_CC] & 15u) << 8) | r[CH_RX_GROUP]);
-\t\tout->dmo = out->roam = out->vox = false;
-\t\treturn (r[CH_CC] & 0xF0u) == 0xD0u && codeplug_p25_valid(out);
-\t}
-#endif
-\tout->alias_tx = (uint8_t)'''),
-        ('\tr[CH_MODE] = ch->mode == RADIO_MODE_DMR ? 1 : 0;', '\tr[CH_MODE] = codeplug_mode_p25(ch->mode) ? 0xA5u : ch->mode == RADIO_MODE_DMR ? 1 : 0;'),
-        ('\tr[CH_CC] = ch->color_code & 0x0Fu;', '''\tr[CH_CC] = ch->color_code & 0x0Fu;
-#if CONFIG_P25_CHANNELS
-\tif (codeplug_mode_p25(ch->mode))
-\t\tr[CH_CC] = (uint8_t)(0xD0u | (ch->p25_nac >> 8));
-#endif'''),
-        ('\tr[CH_RX_GROUP] = (uint8_t)(ch->listen_list <= 0xFFu ? ch->listen_list : 0);', '''\tr[CH_RX_GROUP] = (uint8_t)(ch->listen_list <= 0xFFu ? ch->listen_list : 0);
-#if CONFIG_P25_CHANNELS
-\tif (codeplug_mode_p25(ch->mode)) r[CH_RX_GROUP] = (uint8_t)ch->p25_nac;
-#endif'''),
+        ('\tmemset(out, 0, sizeof(*out));\n\tif (!freq(&r[CH_RX]', '\tmemset(out, 0, sizeof(*out));\n#if CONFIG_P25_CHANNELS\n\tif (r[CH_MODE] != 0 && r[CH_MODE] != 1) return false;\n#endif\n\tif (!freq(&r[CH_RX]'),
         ('\tstorage_lock();\n\tbool ok = materialize() && flash_read(channel_addr(number), r, sizeof(r));', '''#if CONFIG_P25_CHANNELS
 \tif (codeplug_mode_p25(ch->mode) && !codeplug_p25_valid(ch)) return false;
 #endif
@@ -150,28 +146,175 @@ static inline bool codeplug_p25_valid(const channel_t *ch)
          '\tTOGGLE(TRN("Hint row"), "help", UI_SET_HINTS),\n\tTOGGLE(TRN("Standby LED"), "status blink indicator", UI_SET_STANDBY_LED),\n\tNUMBER(TRN("Standby interval"), "led blink gap", UI_SET_STANDBY_GAP_S, 1, 30, 1, " s"),\n\tNUMBER(TRN("Standby blink"), "led blink duration", UI_SET_STANDBY_ON_MS, 50, 1000, 50, " ms"),\n\tLIST(TRN("LED style"), "hytera motorola status", UI_SET_LED_STYLE, v_led_style, n_led_style),'),
         ('#if CONFIG_SFR_CWID\n\tLIST(TRN("SFR CW ID"), "single frequency repeater morse callsign identify", UI_SET_SFR_CWID, v_sfrcwid, n_sfrcwid),\n#endif\n};',
          '#if CONFIG_SFR_CWID\n\tLIST(TRN("SFR CW ID"), "single frequency repeater morse callsign identify", UI_SET_SFR_CWID, v_sfrcwid, n_sfrcwid),\n#endif\n\tTOGGLE(TRN("Auto squelch"), "ASQ automatic noise floor", UI_SET_AUTO_SQL),\n};'),
+        ('static char t[400];', 'static char t[640];'),
+        ('sb_str(&b, "RadioFoundry\\n");', 'sb_str(&b, "Open25-DM32 Classic\\n");\n\tsb_str(&b, "Issues:\\ngithub.com/tylerwatt12/\\nOpen25-DM32/issues\\n");'),
+        ('sb_str(&b, "MIT, (c) 2026 The RadioFoundry Authors\\n");',
+         'sb_str(&b, "MIT, (c) 2026 Open25-DM32 contributors\\n");\n\tsb_str(&b, "Based on RadioFoundry\\n");\n\tsb_str(&b, "MIT, (c) 2026 The RadioFoundry Authors\\n");'),
         ('ui_toast(i == UI_CP_NEW ? TR("New codeplug started") : TR("Old codeplug kept: edit again"));',
          'ui_toast(i == UI_CP_NEW ? TR("Creating codeplug") : TR("Old codeplug kept: edit again"));'),
         ('static void contacts_item(uint16_t i, ui_item_t *it)', 'static void __attribute__((unused)) contacts_item(uint16_t i, ui_item_t *it)'),
-        ('CE_ZONES, CE_GO, CE_SHARE, CE_SAVE, CE_SAVE_NEW, CE_COUNT', '#if CONFIG_P25_CHANNELS\n       CE_P25_TG, CE_P25_NAC, CE_P25_ID,\n#endif\n       CE_ZONES, CE_GO, CE_SHARE, CE_SAVE, CE_SAVE_NEW, CE_COUNT'),
-        ('[CE_SCAN] = CE_FIELD(scan_skip), [CE_ECO] = CE_FIELD(no_eco),', '[CE_SCAN] = CE_FIELD(scan_skip), [CE_ECO] = CE_FIELD(no_eco),\n#if CONFIG_P25_CHANNELS\n\t[CE_P25_TG] = CE_FIELD(p25_tg), [CE_P25_NAC] = CE_FIELD(p25_nac), [CE_P25_ID] = CE_FIELD(p25_id),\n#endif'),
+        ('CE_ZONES, CE_GO, CE_SHARE, CE_SAVE, CE_SAVE_NEW, CE_COUNT', '#if CONFIG_P25_CHANNELS\n       CE_P25_TG, CE_P25_NAC, CE_P25_TX_NAC, CE_P25_ID,\n#endif\n       CE_ZONES, CE_GO, CE_SHARE, CE_SAVE, CE_SAVE_NEW, CE_COUNT'),
+        ('[CE_SCAN] = CE_FIELD(scan_skip), [CE_ECO] = CE_FIELD(no_eco),', '[CE_SCAN] = CE_FIELD(scan_skip), [CE_ECO] = CE_FIELD(no_eco),\n#if CONFIG_P25_CHANNELS\n\t[CE_P25_TG] = CE_FIELD(p25_tg), [CE_P25_NAC] = CE_FIELD(p25_nac), [CE_P25_TX_NAC] = CE_FIELD(p25_tx_nac_override), [CE_P25_ID] = CE_FIELD(p25_id),\n#endif'),
         ('\t\tif ((fm_only && dmr) || (dmr_only && !dmr) || (r == CE_MODE && !CONFIG_DMR))', '#if CONFIG_P25_CHANNELS\n\t\tbool p25 = codeplug_mode_p25(ced_ch.mode);\n\t\tbool p25_only = r >= CE_P25_TG && r <= CE_P25_ID;\n\t\tif ((p25_only && !p25) || (p25 && (fm_only || dmr_only || r == CE_ECO))) continue;\n#endif\n\t\tif ((fm_only && dmr) || (dmr_only && !dmr) || (r == CE_MODE && !CONFIG_DMR))'),
-        ('TRN("Battery saver"), TRN("Zones"), TRN("Tune to this ch"),', 'TRN("Battery saver"),\n#if CONFIG_P25_CHANNELS\n\t\tTRN("Talkgroup"), "NAC", TRN("P25 Radio ID"),\n#endif\n\t\tTRN("Zones"), TRN("Tune to this ch"),'),
+        ('TRN("Battery saver"), TRN("Zones"), TRN("Tune to this ch"),', 'TRN("Battery saver"),\n#if CONFIG_P25_CHANNELS\n\t\tTRN("Talkgroup"), "RX NAC", "TX NAC", TRN("P25 Radio ID"),\n#endif\n\t\tTRN("Zones"), TRN("Tune to this ch"),'),
         ('sb_str(&wb, ch->mode == RADIO_MODE_DMR ? "DMR" : radio_am_channel(ch) ? "AM" : "FM");', 'sb_str(&wb, codeplug_mode_p25(ch->mode) ? "P25" : ch->mode == RADIO_MODE_DMR ? "DMR" : radio_am_channel(ch) ? "AM" : "FM");'),
         ('sb_str(&b, ch->mode == RADIO_MODE_DMR ? "DMR" : "FM");', 'sb_str(&b, codeplug_mode_p25(ch->mode) ? "P25" : ch->mode == RADIO_MODE_DMR ? "DMR" : "FM");'),
         ('if (editing && (r == CE_RX || r == CE_TX || r == CE_ID)) {', 'if (editing && (r == CE_RX || r == CE_TX || r == CE_ID\n#if CONFIG_P25_CHANNELS\n\t\t|| r == CE_P25_TG || r == CE_P25_ID\n#endif\n\t\t)) {'),
         ('if (r != CE_ID && k == UI_ENTRY_MHZ)', 'if ((r == CE_RX || r == CE_TX) && k == UI_ENTRY_MHZ)'),
-        ('\tcase CE_NUMBER:\n\t\tsb_u32(&b, ced_num, 1);', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_TG: sb_u32(&b, ch->p25_tg, 1); break;\n\tcase CE_P25_ID: sb_u32(&b, ch->p25_id, 1); break;\n\tcase CE_P25_NAC: {\n\t\tunsigned value = ch->p25_nac, cursor = 3;\n#if CONFIG_CHANNEL_EDIT\n\t\tif (editing) { value = (unsigned)ced_val; cursor = ced_len; }\n#endif\n\t\tsb_chr(&b, \'$\');\n\t\tfor (unsigned digit = 0; digit < 3; digit++) {\n\t\t\tif (digit == cursor) sb_chr(&b, \'[\');\n\t\t\tsb_chr(&b, "0123456789ABCDEF"[(value >> (4 * (2 - digit))) & 15u]);\n\t\t\tif (digit == cursor) sb_chr(&b, \']\');\n\t\t}\n\t\tbreak;\n\t}\n#endif\n\tcase CE_NUMBER:\n\t\tsb_u32(&b, ced_num, 1);'),
+        ('\tcase CE_NUMBER:\n\t\tsb_u32(&b, ced_num, 1);', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_TG: sb_u32(&b, ch->p25_tg, 1); break;\n\tcase CE_P25_ID: sb_u32(&b, ch->p25_id, 1); break;\n\tcase CE_P25_NAC:\n\tcase CE_P25_TX_NAC: {\n\t\tunsigned value = r==CE_P25_NAC ? ch->p25_nac : codeplug_p25_tx_nac(ch), cursor = 3;\n#if CONFIG_CHANNEL_EDIT\n\t\tif (editing) { value = (unsigned)ced_val; cursor = ced_len; }\n#endif\n        if (r==CE_P25_TX_NAC && (editing ? cursor==3 : !ch->p25_tx_nac_override)) {\n            sb_str(&b,TR("Same as RX")); break;\n        }\n\t\tsb_chr(&b, \'$\');\n\t\tfor (unsigned digit = 0; digit < 3; digit++) {\n\t\t\tif (digit == cursor) sb_chr(&b, \'[\');\n\t\t\tsb_chr(&b, "0123456789ABCDEF"[(value >> (4 * (2 - digit))) & 15u]);\n\t\t\tif (digit == cursor) sb_chr(&b, \']\');\n\t\t}\n\t\tbreak;\n\t}\n#endif\n\tcase CE_NUMBER:\n\t\tsb_u32(&b, ced_num, 1);'),
         ('\tif (CONFIG_DMR && c->mode == RADIO_MODE_DMR && c->contact == 0)', '#if CONFIG_P25_CHANNELS\n\tif (codeplug_mode_p25(c->mode) && !codeplug_p25_valid(c))\n\t\treturn TR("Check P25 NAC, talkgroup and ID");\n#endif\n\tif (CONFIG_DMR && c->mode == RADIO_MODE_DMR && c->contact == 0)'),
-        ('\tcase CE_CC:\n\t\tced_val = (ced_val + dir + 16) % 16;', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_NAC: {\n\t\tunsigned shift = 4u * (2u - ced_len);\n\t\tunsigned value = (((unsigned)ced_val >> shift) + (unsigned)dir) & 15u;\n\t\tced_val = (ced_val & ~(15u << shift)) | (value << shift);\n\t\tbreak;\n\t}\n#endif\n\tcase CE_CC:\n\t\tced_val = (ced_val + dir + 16) % 16;'),
-        ('\tcase CE_ID:\n\t\tif (ced_len >= CE_DIGITS)', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_NAC: {\n\t\tunsigned shift = 4u * (2u - ced_len);\n\t\tced_val = (ced_val & ~(15u << shift)) | ((unsigned)(d - \'0\') << shift);\n\t\tced_len = (uint8_t)((ced_len + 1) % 3);\n\t\tbreak;\n\t}\n\tcase CE_P25_TG:\n\tcase CE_P25_ID:\n\t\tif (v > (ced_edit == CE_P25_TG ? 65535 : 9999999)) {\n\t\t\tui_toast(TR("Value too large")); break;\n\t\t}\n        /* fall through */\n        __attribute__((fallthrough));\n#endif\n\tcase CE_ID:\n\t\tif (ced_len >= CE_DIGITS)'),
-        ('\tcase CE_ID:\n\t\tif (ced_len > 0)', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_TG: if (ced_len) c->p25_tg = (uint16_t)ced_val; break;\n\tcase CE_P25_ID: if (ced_len) c->p25_id = (uint32_t)ced_val; break;\n\tcase CE_P25_NAC: c->p25_nac = (uint16_t)ced_val; break;\n#endif\n\tcase CE_ID:\n\t\tif (ced_len > 0)'),
-        ('static bool chinfo_key(const input_event_t *ev)\n{\n\tbool press = ev->gesture == GESTURE_PRESS || ev->gesture == GESTURE_LONG;\n\tif (ced_edit == CE_NONE) {\n\t\tif (ev->action == ACT_BACK && ev->gesture == GESTURE_PRESS && ced_num != 0 &&\n\t\t\t\t(ced_new || ced_changed(CE_COUNT))) {\n\t\t\tdiscard_contact = false;\n\t\t\tui_push(SCR_DISCARD, 0);\n\t\t\treturn true;\n\t\t}\n\t\treturn false;\n\t}\n\tint dir = ev->action == ACT_NAV_UP ? 1 : ev->action == ACT_NAV_DOWN ? -1 :\n\t\tev->action == ACT_ENC_STEP ? (ev->value > 0 ? 1 : -1) : 0;\n\tif (dir != 0 && ev->gesture != GESTURE_UP) {', 'static bool chinfo_key(const input_event_t *ev)\n{\n\tbool press = ev->gesture == GESTURE_PRESS || ev->gesture == GESTURE_LONG;\n\tif (ced_edit == CE_NONE) {\n\t\tif (ev->action == ACT_BACK && ev->gesture == GESTURE_PRESS && ced_num != 0 &&\n\t\t\t\t(ced_new || ced_changed(CE_COUNT))) {\n\t\t\tdiscard_contact = false;\n\t\t\tui_push(SCR_DISCARD, 0);\n\t\t\treturn true;\n\t\t}\n\t\treturn false;\n\t}\n\tint dir = ev->action == ACT_NAV_UP ? 1 : ev->action == ACT_NAV_DOWN ? -1 :\n\t\tev->action == ACT_ENC_STEP ? (ev->value > 0 ? 1 : -1) : 0;\n#if CONFIG_P25_CHANNELS\n    if (ced_edit == CE_P25_NAC && dir && ev->gesture != GESTURE_UP && ev->action != ACT_ENC_STEP) {\n        ced_len = (uint8_t)((ced_len + dir + 3) % 3);\n        ui_dirty(); return true;\n    }\n#endif\n\tif (dir != 0 && ev->gesture != GESTURE_UP) {'),
+        ('\tcase CE_CC:\n\t\tced_val = (ced_val + dir + 16) % 16;', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_NAC:\n\tcase CE_P25_TX_NAC: {\n        if (ced_len==3) ced_len=0;\n\t\tunsigned shift = 4u * (2u - ced_len);\n\t\tunsigned value = (((unsigned)ced_val >> shift) + (unsigned)dir) & 15u;\n\t\tced_val = (ced_val & ~(15u << shift)) | (value << shift);\n\t\tbreak;\n\t}\n#endif\n\tcase CE_CC:\n\t\tced_val = (ced_val + dir + 16) % 16;'),
+        ('\tcase CE_ID:\n\t\tif (ced_len >= CE_DIGITS)', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_NAC:\n\tcase CE_P25_TX_NAC: {\n        if (ced_len==3) ced_len=0;\n\t\tunsigned shift = 4u * (2u - ced_len);\n\t\tced_val = (ced_val & ~(15u << shift)) | ((unsigned)(d - \'0\') << shift);\n\t\tced_len = (uint8_t)((ced_len + 1) % 3);\n\t\tbreak;\n\t}\n\tcase CE_P25_TG:\n\tcase CE_P25_ID:\n\t\tif (v > (ced_edit == CE_P25_TG ? 65535 : 16777214)) {\n\t\t\tui_toast(TR("Value too large")); break;\n\t\t}\n        /* fall through */\n        __attribute__((fallthrough));\n#endif\n\tcase CE_ID:\n\t\tif (ced_len >= CE_DIGITS)'),
+        ('\tcase CE_ID:\n\t\tif (ced_len > 0)', '#if CONFIG_P25_CHANNELS\n\tcase CE_P25_TG: if (ced_len) c->p25_tg = (uint16_t)ced_val; break;\n\tcase CE_P25_ID: if (ced_len) c->p25_id = (uint32_t)ced_val; break;\n\tcase CE_P25_NAC: c->p25_nac = (uint16_t)ced_val; break;\n    case CE_P25_TX_NAC: c->p25_tx_nac_override=ced_len==3 ? 0 : (uint16_t)(ced_val+1); break;\n#endif\n\tcase CE_ID:\n\t\tif (ced_len > 0)'),
+        ('static bool chinfo_key(const input_event_t *ev)\n{\n\tbool press = ev->gesture == GESTURE_PRESS || ev->gesture == GESTURE_LONG;\n\tif (ced_edit == CE_NONE) {\n\t\tif (ev->action == ACT_BACK && ev->gesture == GESTURE_PRESS && ced_num != 0 &&\n\t\t\t\t(ced_new || ced_changed(CE_COUNT))) {\n\t\t\tdiscard_contact = false;\n\t\t\tui_push(SCR_DISCARD, 0);\n\t\t\treturn true;\n\t\t}\n\t\treturn false;\n\t}\n\tint dir = ev->action == ACT_NAV_UP ? 1 : ev->action == ACT_NAV_DOWN ? -1 :\n\t\tev->action == ACT_ENC_STEP ? (ev->value > 0 ? 1 : -1) : 0;\n\tif (dir != 0 && ev->gesture != GESTURE_UP) {', 'static bool chinfo_key(const input_event_t *ev)\n{\n\tbool press = ev->gesture == GESTURE_PRESS || ev->gesture == GESTURE_LONG;\n\tif (ced_edit == CE_NONE) {\n\t\tif (ev->action == ACT_BACK && ev->gesture == GESTURE_PRESS && ced_num != 0 &&\n\t\t\t\t(ced_new || ced_changed(CE_COUNT))) {\n\t\t\tdiscard_contact = false;\n\t\t\tui_push(SCR_DISCARD, 0);\n\t\t\treturn true;\n\t\t}\n\t\treturn false;\n\t}\n\tint dir = ev->action == ACT_NAV_UP ? 1 : ev->action == ACT_NAV_DOWN ? -1 :\n\t\tev->action == ACT_ENC_STEP ? (ev->value > 0 ? 1 : -1) : 0;\n#if CONFIG_P25_CHANNELS\n    if ((ced_edit == CE_P25_NAC || ced_edit == CE_P25_TX_NAC) && dir && ev->gesture != GESTURE_UP && ev->action != ACT_ENC_STEP) {\n        int positions=ced_edit==CE_P25_TX_NAC ? 4 : 3;\n        ced_len = (uint8_t)((ced_len + dir + positions) % positions);\n        ui_dirty(); return true;\n    }\n#endif\n\tif (dir != 0 && ev->gesture != GESTURE_UP) {'),
         ('if (ced_edit != CE_RX && ced_edit != CE_TX && ced_edit != CE_ID)', 'if (ced_edit != CE_RX && ced_edit != CE_TX && ced_edit != CE_ID\n#if CONFIG_P25_CHANNELS\n\t\t\t&& ced_edit != CE_P25_TG && ced_edit != CE_P25_ID\n#endif\n\t\t\t)'),
-        ('\tcase CE_MODE: c->mode = c->mode == RADIO_MODE_DMR ? RADIO_MODE_FM : RADIO_MODE_DMR; break;', '\tcase CE_MODE:\n#if CONFIG_P25_CHANNELS\n\t\tif (c->mode == RADIO_MODE_DMR) {\n\t\t\tc->mode = RADIO_MODE_P25; c->p25_nac = 0x293;\n\t\t\tc->p25_tg = 1; c->p25_id = 1; c->bw = RADIO_BW_12K5;\n\t\t\tc->dmo = c->roam = c->vox = false;\n\t\t} else if (codeplug_mode_p25(c->mode)) {\n\t\t\tc->mode = RADIO_MODE_FM; c->contact = c->listen_list = c->dmr_id = 0;\n\t\t} else\n#endif\n\t\t\tc->mode = c->mode == RADIO_MODE_DMR ? RADIO_MODE_FM : RADIO_MODE_DMR;\n\t\tbreak;\n#if CONFIG_P25_CHANNELS\n\tcase CE_P25_NAC: ced_edit = r; ced_val = c->p25_nac; ced_len = 0; break;\n\tcase CE_P25_TG:\n\tcase CE_P25_ID:\n#endif'),
+        ('\tcase CE_MODE: c->mode = c->mode == RADIO_MODE_DMR ? RADIO_MODE_FM : RADIO_MODE_DMR; break;', '\tcase CE_MODE:\n#if CONFIG_P25_CHANNELS\n\t\tif (c->mode == RADIO_MODE_DMR) {\n\t\t\tc->mode = RADIO_MODE_P25; c->p25_nac = 0x293; c->p25_tx_nac_override=0;\n\t\t\tc->p25_tg = 1; c->p25_squelch=1; c->p25_id = 1; c->dmr_id = 1; c->bw = RADIO_BW_12K5;\n\t\t\tc->dmo = c->roam = c->vox = false;\n\t\t} else if (codeplug_mode_p25(c->mode)) {\n\t\t\tc->mode = RADIO_MODE_FM; c->contact = c->listen_list = c->dmr_id = 0;\n\t\t} else\n#endif\n\t\t\tc->mode = c->mode == RADIO_MODE_DMR ? RADIO_MODE_FM : RADIO_MODE_DMR;\n\t\tbreak;\n#if CONFIG_P25_CHANNELS\n\tcase CE_P25_NAC: ced_edit = r; ced_val = c->p25_nac; ced_len = 0; break;\n    case CE_P25_TX_NAC: ced_edit=r; ced_val=codeplug_p25_tx_nac(c); ced_len=c->p25_tx_nac_override ? 0 : 3; break;\n\tcase CE_P25_TG:\n\tcase CE_P25_ID:\n#endif'),
         ('ced_edit == CE_TX_TONE) && ced_len > 0)', 'ced_edit == CE_TX_TONE\n#if CONFIG_P25_CHANNELS\n             || ced_edit == CE_P25_TG || ced_edit == CE_P25_ID\n#endif\n             ) && ced_len > 0)'),
+        # Editor-only defaults/confirmation; saved/imported programming is unchanged.
+        ('static channel_t ced_orig;', 'static char ced_msg[64];\t// channel editor toast/confirmation text\nstatic channel_t ced_orig;'),
+        ('static void ced_rx_band(channel_t *c)', '''static uint32_t ced_tx_hz(const channel_t *c)
+{
+    return c->dmo || !c->tx_hz ? c->rx_hz : c->tx_hz;
+}
+
+static bool ced_outside_ham(const channel_t *c)
+{
+    uint32_t hz = ced_tx_hz(c);
+    return !((hz >= 144000000u && hz <= 148000000u) ||
+             (hz >= 420000000u && hz <= 450000000u));
+}
+
+static void ced_rx_band(channel_t *c)'''),
+        ('\tced_rx_band(&ced_ch);\n}', '\tced_rx_band(&ced_ch);\n\tif (ced_outside_ham(&ced_ch)) ced_ch.rx_only = true;\n}'),
+        ('\t\tced_ch.roam = false;\n\t\tchar name', '\t\tced_ch.roam = false;\n\t\tif (ced_outside_ham(&ced_ch)) ced_ch.rx_only = true;\n\t\tchar name'),
+        ('static void ced_save(bool as_new)\n{\n\tstatic char msg[32];',
+         'static void ced_save(bool as_new)\n{\n\tif (as_new && ced_outside_ham(&ced_ch)) ced_ch.rx_only = true;'),
+        ('sb_init(&b, msg, sizeof msg);\n\tsb_str(&b, as_new', 'sb_init(&b, ced_msg, sizeof ced_msg);\n\tsb_str(&b, as_new'),
+        ('\tui_toast(msg);\n}\n\n// The tone typed', '\tui_toast(ced_msg);\n}\n\n// The tone typed'),
+        ('static void ced_commit(void)\n{\n\tchannel_t *c = &ced_ch;',
+         'static void ced_commit(void)\n{\n\tchannel_t *c = &ced_ch;\n\tuint32_t before = ced_tx_hz(c);'),
+        ('\tced_edit = CE_NONE;\n}\n\nstatic bool chinfo_key',
+         '\tif (ced_tx_hz(c) != before && ced_outside_ham(c)) c->rx_only = true;\n\tced_edit = CE_NONE;\n}\n\nstatic bool chinfo_key'),
+        ('\tuint8_t r = ced_rows[i];\n\tswitch (r)', '\tuint8_t r = ced_rows[i];\n\tuint32_t before = ced_tx_hz(c);\n\tswitch (r)'),
+        ('case CE_RX_ONLY: c->rx_only = !c->rx_only; break;', '''case CE_RX_ONLY:
+        if (!c->rx_only) c->rx_only = true;
+        else if (ced_outside_ham(c)) ui_push(SCR_CONFIRM, 1);
+        else c->rx_only = false;
+        break;'''),
+        ('\tui_dirty();\n#else\n\t(void)i;\n\t(void)hold;\n\tchlist_tune',
+         '\tif (ced_tx_hz(c) != before && ced_outside_ham(c)) c->rx_only = true;\n\tui_dirty();\n#else\n\t(void)i;\n\t(void)hold;\n\tchlist_tune'),
+        ('static void confirm_item(uint16_t i, ui_item_t *it)\n{', '''static void confirm_item(uint16_t i, ui_item_t *it)
+{
+#if CONFIG_CHANNEL_EDIT
+    if (ui_frame()->arg == 1) {
+        str_copy(it->label, sizeof it->label, i == 0 ? TR("Keep RX-only") : TR("Enable TX"));
+        if (i == 1) it->flags |= UI_ITEM_WARN;
+        return;
+    }
+#endif'''),
+        ('static void confirm_select(uint16_t i, bool hold)\n{\n\t(void)hold;', '''static void confirm_select(uint16_t i, bool hold)
+{
+    (void)hold;
+#if CONFIG_CHANNEL_EDIT
+    if (ui_frame()->arg == 1) {
+        if (i == 1) ced_ch.rx_only = false;
+        ui_pop();
+        return;
+    }
+#endif'''),
+        ('static const char *confirm_body(void)\n{', '''static const char *confirm_body(void)
+{
+#if CONFIG_CHANNEL_EDIT
+    if (ui_frame()->arg == 1) {
+        sbuf_t b;
+        sb_init(&b, ced_msg, sizeof ced_msg);
+        sb_str(&b, TR("Outside ham bands")); sb_str(&b, "\\nTX: ");
+        sb_freq(&b, ced_tx_hz(&ced_ch)); sb_str(&b, " MHz\\n");
+        sb_str(&b, TR("PTT may transmit."));
+        return ced_msg;
+    }
+#endif'''),
+        ('static const ui_scr_def_t confirm_screen = {', '''static const char *confirm_title(void)
+{
+#if CONFIG_CHANNEL_EDIT
+    if (ui_frame()->arg == 1) return TR("Enable TX?");
+#endif
+    return TR("Factory Reset");
+}
+
+static const ui_scr_def_t confirm_screen = {'''),
+        ('.prefix = TRN("Factory Reset"), .hint', '.title = confirm_title, .hint'),
     ])
     transform('core/ui/ui_screens.c', [
+        (boot, r'''// --- boot splash ---
+
+// Open25's wordmark and compact numeric mark use the existing display fonts.
+void ui_draw_splash(const char *board_name, const char *version, const char *line1, const char *line2)
+{
+    const ui_layout_t *L=&ui_layout;
+    int w=gfx_width(),h=gfx_height(),gap=h>=200?10:2;
+    const char *name="Open25-DM32 Classic";
+    const font_t *wf=L->large;
+    if(gfx_text_width(wf,name)>w-8)wf=L->medium;
+    if(gfx_text_width(wf,name)>w-8)wf=L->small;
+    if(gfx_text_width(wf,name)>w-8)wf=L->tiny;
+    const char *lines[2]={line1?line1:"",line2?line2:""};
+    int n_lines=(lines[0][0]!=0)+(lines[1][0]!=0);
+    const font_t *lf=L->medium,*ff=L->tiny;
+    for(unsigned i=0;i<2;i++)
+        if(gfx_text_width(lf,lines[i])>w-4)lf=L->small;
+    for(unsigned i=0;i<2;i++)
+        if(gfx_text_width(lf,lines[i])>w-4)lf=L->tiny;
+    char foot[48];
+    static const char *const seps[]={"  "," ",NULL};
+    for(unsigned i=0;i<3;i++){
+        sbuf_t b;sb_init(&b,foot,sizeof foot);
+        if(seps[i]){sb_str(&b,board_name);sb_str(&b,seps[i]);}
+        sb_str(&b,version);
+        if(gfx_text_width(ff,foot)<=w)break;
+    }
+    bool tall=h>=160;
+    int foot_y=h-ff->h,limit=foot_y-gap-(tall?ff->h+gap:0);
+    int text_h=wf->h+(tall?gap+L->small->h:0)+(n_lines?gap+n_lines*lf->h:0);
+    int mark_h=L->large->h+16;
+    bool mark=tall && limit-text_h>=mark_h+gap;
+    int y=(limit-text_h-(mark?mark_h+gap:0))/2;
+    if(y<0)y=0;
+    gfx_clear(ui_col.bg);
+    if(mark){
+        int mw=gfx_text_width(L->large,"25")+24;
+        color_t blue=gfx_bpp()==1?ui_col.fg:RGB565(0,80,160);
+        color_t ink=gfx_bpp()==1?ui_col.bg:RGB565(255,255,255);
+        gfx_round_fill((w-mw)/2,y,mw,mark_h,blue);
+        gfx_text(L->large,(w-gfx_text_width(L->large,"25"))/2,y+8,"25",ink);
+        y+=mark_h+gap;
+    }
+    gfx_text(wf,(w-gfx_text_width(wf,name))/2,y,name,ui_col.fg);
+    y+=wf->h;
+    if(tall){
+        const char *modes="FM / DMR / P25";
+        y+=gap;
+        gfx_text(L->small,(w-gfx_text_width(L->small,modes))/2,y,modes,ui_col.dim);
+        y+=L->small->h;
+    }
+    if(n_lines){
+        y+=gap;
+        for(unsigned i=0;i<2;i++)if(lines[i][0]){
+            gfx_text(lf,(w-gfx_text_width(lf,lines[i]))/2,y,lines[i],ui_col.fg);
+            y+=lf->h;
+        }
+    }
+    if(tall){
+        const char *support="kd8zmm.com/open25-dm32";
+        gfx_text(ff,(w-gfx_text_width(ff,support))/2,foot_y-gap-ff->h,support,ui_col.dim);
+    }
+    gfx_text(ff,(w-gfx_text_width(ff,foot))/2,foot_y,foot,ui_col.dim);
+}
+
+'''),
+        ('static uint8_t ui_theme;', 'static uint8_t ui_theme=1;'),
+        ('TR("Add codec with rfoundry")', 'TR("Use Open25 Flasher v3")'),
+
         ('return v->ch.mode == RADIO_MODE_DMR ? "DMR" : v->am ? "AM" : "FM";', 'return codeplug_mode_p25(v->ch.mode) ? "P25" : v->ch.mode == RADIO_MODE_DMR ? "DMR" : v->am ? "AM" : "FM";'),
         ('\t\t\tsb_str(&b, "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);',
          '\t\t\tsb_str(&b, v->auto_sql && v->squelch > 0 ? "ASQ" : "SQ");\n\t\t\tsb_u32(&b, v->squelch, 1);\n\t\t\tbool asq_shift = v->auto_sql && v->squelch > 0 && v->sql_eff > 0 && v->sql_eff != v->squelch;\n\t\t\tif (asq_shift) {\n\t\t\t\tsb_str(&b, v->sql_eff > v->squelch ? ">" : "<");\n\t\t\t\tsb_u32(&b, v->sql_eff, 1);\n\t\t\t}'),

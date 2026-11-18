@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Actual controller/lab/grant with the existing board/scheduler fixtures. */
 #define main native_fixture_main
 #include "test_lab.c"

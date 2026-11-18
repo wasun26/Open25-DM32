@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef NATIVE_LAB_H
 #define NATIVE_LAB_H
 #include "radio/radio_sm.h"

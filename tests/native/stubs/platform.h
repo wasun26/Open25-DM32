@@ -1,9 +1,11 @@
+/* SPDX-License-Identifier: MIT */
 /* Host-only double for the real interrupt-port translation unit. */
 #ifndef NATIVE_HOST_PLATFORM_H
 #define NATIVE_HOST_PLATFORM_H
 #include <stdbool.h>
 #include <stdint.h>
-enum { IRQ_TIMER3=3, IRQ_TIMER6=6, IRQ_MODEM_SYS=29, IRQ_MODEM_TS_TX,
+#include "../../../build/native-host/pcm_timer.inc"
+enum { IRQ_TIMER1=1, IRQ_TIMER3=3, IRQ_TIMER4=4, IRQ_TIMER6=6, IRQ_PCM_WR=28, IRQ_MODEM_SYS=29, IRQ_MODEM_TS_TX,
        IRQ_MODEM_TS_RX, IRQ_MODEM_RF_TX, TIMER_PA=3 };
 typedef void (*hrc_irq_fn)(void);
 extern hrc_irq_fn hrc_irq_table[64];

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef P25_VOICE_H
 #define P25_VOICE_H
 #include "p25.h"
@@ -29,7 +29,7 @@ typedef struct {
     uint16_t voice[9][8];
     p25_voice_packet queue[P25_VOICE_QUEUE];
     uint16_t packet_symbol;
-    uint8_t head, tail, count, voice_count, next_duid;
+    uint8_t head, tail, count, voice_count, next_duid, flush_remaining;
     uint8_t transmitting, started, stopping, terminator_pending, fault;
     uint8_t crypto_clear, have_group;
     uint32_t rx_frames, rx_voice, rx_muted, rx_erasures, tx_frames, tx_underruns;
@@ -48,8 +48,9 @@ int p25_voice_tx_begin(p25_voice *v, const p25_call *call);
  * Returns 0 on invalid state, codec failure or queue overflow. Abort/unkey.
  * Producer must be paced by microphone time, not called in an unbounded loop. */
 int p25_voice_tx_pcm(p25_voice *v, int16_t pcm[160]);
-/* Release: pad only the incomplete nine-frame LDU with encoded silence,
- * then a TDU. Empty, unstarted calls are canceled. Task context only. */
+/* Release: encode the codec tail, then pad the incomplete nine-frame LDU
+ * and append a TDU. Queue backpressure defers finishing until tx_read drains;
+ * new PCM is rejected after release. Empty PTT is canceled. Task context only. */
 int p25_voice_tx_end(p25_voice *v);
 /* Up to capacity dibits, including across CAI unit boundaries. Zero means
  * prefill waiting or completely drained; inspect tx_done(). No fabricated

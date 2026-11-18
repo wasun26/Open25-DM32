@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "selftest.h"
 #include "phy_stream.h"
 #include <assert.h>
@@ -153,6 +153,93 @@ static void paced_call(void)
     feed(ldu, sizeof ldu);
     assert(blocks == 9 && loud == 0);
 }
+
+/* Compare the real CAI producer against an independently driven codec stream:
+ * real PCM, exactly the declared tail, and only then nine-frame LDU padding.
+ * Queue-full releases must defer work without losing or duplicating a frame. */
+static dm32_imbe_context tail_reference, tail_zero;
+static uint16_t tail_words[36][8];
+static void tail_input(int16_t out[160], unsigned frame, unsigned mic_frames,
+                       unsigned impulse)
+{
+    for (unsigned i = 0; i < 160; ++i)
+        out[i] = impulse ? 0 : (int16_t)(((frame * 160 + i) % 40) * 400 - 8000);
+    if (impulse && frame + 1 == mic_frames) out[159] = 30000;
+}
+static void tail_call(unsigned mic_frames, unsigned impulse)
+{
+    const unsigned terminators = 1;
+    uint8_t air[1024], dibits[4];
+    unsigned encoded = (mic_frames + DM32_IMBE_ENCODER_FLUSH_FRAMES + 8) / 9 * 9;
+    assert(encoded <= 36);
+    dm32_imbe_init(&tail_reference);
+    for (unsigned f = 0; f < encoded; ++f) {
+        int16_t input[160] = {0};
+        if (f < mic_frames) tail_input(input, f, mic_frames, impulse);
+        assert(dm32_imbe_encode(&tail_reference, input, tail_words[f]));
+    }
+    reset(0x293,42);
+    assert(p25_voice_tx_begin(&v,&call));
+    for (unsigned f = 0; f < mic_frames; ++f) {
+        int16_t input[160];tail_input(input,f,mic_frames,impulse);
+        assert(p25_voice_tx_pcm(&v,input));
+    }
+    assert(p25_voice_tx_end(&v));
+    assert(v.stopping && !v.fault);
+    assert(!p25_voice_tx_end(&v));
+    dm32_imbe_context saved = v.codec;
+    int16_t rejected[160] = {0};
+    assert(!p25_voice_tx_pcm(&v,rejected));
+    assert(!memcmp(&saved,&v.codec,sizeof saved) && !v.fault);
+    if (mic_frames == 26) {
+        assert(v.count == P25_VOICE_QUEUE && v.voice_count == 8);
+        assert(v.flush_remaining == DM32_IMBE_ENCODER_FLUSH_FRAMES);
+    }
+    if (mic_frames == 17) {
+        assert(v.count == P25_VOICE_QUEUE && v.voice_count == 8);
+        assert(v.flush_remaining == 0);
+    }
+    if (mic_frames == 17 || mic_frames == 26) {
+        /* One byte of HDU does not free a packet slot. Finishing must wait. */
+        unsigned remaining = v.flush_remaining;
+        assert(p25_voice_tx_read(&v,dibits,4) == 4);
+        air[0] = (uint8_t)((dibits[0]<<6)|(dibits[1]<<4)|(dibits[2]<<2)|dibits[3]);
+        assert(v.flush_remaining == remaining && !memcmp(&saved,&v.codec,sizeof saved));
+        assert(1 + drain(air+1,sizeof air-1) == 99 + encoded/9*216 + terminators*18);
+    } else {
+        assert(drain(air,sizeof air) == 99 + encoded/9*216 + terminators*18);
+    }
+    assert(!v.fault && !v.tx_underruns && !v.flush_remaining);
+    check_frame(air,99,P25_DUID_HDU);
+    for (unsigned packet = 0; packet < encoded/9; ++packet) {
+        p25_decoded decoded;
+        assert(!p25_decode_frame(air+99+packet*216,216,&decoded));
+        assert(decoded.nid.duid == (packet%2 ? P25_DUID_LDU2 : P25_DUID_LDU1));
+        for (unsigned f = 0; f < 9; ++f)
+            assert(!memcmp(decoded.imbe[f],tail_words[packet*9+f],sizeof decoded.imbe[f]));
+    }
+    for (unsigned i = 0; i < terminators; ++i)
+        check_frame(air+99+encoded/9*216+i*18,18,P25_DUID_TDU);
+    if (impulse) {
+        /* The final microphone sample reaches analysis on the third tail
+         * frame; its transmitted payload must differ from all-zero input. */
+        uint16_t zero_words[8];dm32_imbe_init(&tail_zero);
+        for (unsigned f = 0; f < mic_frames + DM32_IMBE_ENCODER_FLUSH_FRAMES; ++f) {
+            int16_t silence[160] = {0};
+            assert(dm32_imbe_encode(&tail_zero,silence,zero_words));
+        }
+        assert(memcmp(zero_words,tail_words[mic_frames+DM32_IMBE_ENCODER_FLUSH_FRAMES-1],sizeof zero_words));
+    }
+}
+static void encoder_tail(void)
+{
+    reset(0x293,42);assert(p25_voice_tx_begin(&v,&call));
+    assert(p25_voice_tx_end(&v) && p25_voice_tx_done(&v));
+    assert(!v.count && !v.flush_remaining && !v.fault);
+    tail_call(1,0);tail_call(9,0);tail_call(18,0);tail_call(17,0);tail_call(26,0);tail_call(9,1);
+    puts("PASS encoder tail: one-frame and exact LDU releases, queue backpressure at17/26 frames, rejected late PCM, exact codec-stream payload and final-sample impulse");
+}
+
 static void faults(void)
 {
     uint8_t d[144];
@@ -180,12 +267,23 @@ static void faults(void)
     p25_call invalid = call;
     invalid.nac = P25_NAC_ANY;
     assert(!p25_voice_tx_begin(&v, &invalid));
-    invalid = call; invalid.source_id = 10000000;
+    invalid = call; invalid.source_id = 0xFFFFFF;
     assert(!p25_voice_tx_begin(&v, &invalid));
     invalid = call; invalid.source_id = 0;
     assert(!p25_voice_tx_begin(&v, &invalid));
     invalid = call; invalid.talkgroup = 0;
     assert(!p25_voice_tx_begin(&v, &invalid));
+}
+static void high_unit_id(void)
+{
+    const uint32_t ids[]={10000000u,0xFFFFFEu};
+    for(unsigned i=0;i<2;i++){
+        uint8_t air[333];p25_call high=call;high.source_id=ids[i];
+        reset(high.nac,high.talkgroup);assert(p25_voice_tx_begin(&v,&high));pcm(0);
+        assert(p25_voice_tx_end(&v));assert(drain(air,sizeof air)==sizeof air);
+        p25_decoded decoded;assert(!p25_decode_frame(air+99,216,&decoded));assert(decoded.source_id==ids[i]);
+        feed(air,sizeof air);assert(blocks==9 && loud && !v.rx_muted);
+    }
 }
 static void layout(void)
 {
@@ -229,7 +327,7 @@ int main(void)
     printf("selftest ok=%u air=%u blocks=%u pcm_crc=%08x nonzero=%u session_bytes=%u\n",
             r.ok, r.air_bytes, r.pcm_blocks, r.pcm_crc, r.nonzero_samples, r.session_bytes);
     assert(r.ok);
-    short_call(); paced_call(); faults(); layout();
+    short_call(); paced_call(); encoder_tail(); faults(); high_unit_id(); layout();
     puts("PASS conventional voice lifecycle, pacing, admission, underrun, overflow, PHY layouts and loss");
     return 0;
 }

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Real UI storage job, settings owner, codeplug and journal on the DM32 flash map. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +57,7 @@ static void unchanged_private_regions(void)
 }
 int main(int argc,char **argv)
 {
+    settings_t defaults;settings_defaults(&defaults);CHECK(settings_theme(&defaults)==1);
     original=malloc(SIZE); CHECK(original!=NULL); if(!original) return 1;
     if(argc==2) {
         FILE *f=fopen(argv[1],"rb"); CHECK(f!=NULL); if(!f) return 1;

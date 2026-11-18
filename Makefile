@@ -1,4 +1,5 @@
-.PHONY: radiofoundry sources toolchain protocol-test codec-test runtime-test voice-test native-test receive-audio-test classic-test test
+# SPDX-License-Identifier: MIT
+.PHONY: radiofoundry sources toolchain cai-test protocol-test codec-test runtime-test voice-test native-test receive-audio-test classic-test test nrfb-test
 
 radiofoundry:
 	python3 tools/build_radiofoundry.py --classic --stack-check
@@ -9,11 +10,18 @@ sources:
 toolchain:
 	sh tools/bootstrap_toolchain.sh
 
+cai-test:
+	python3 tools/sources.py verify-vendored
+	cmake -S third_party/p25cai -B build/p25cai -DCMAKE_BUILD_TYPE=RelWithDebInfo -DP25CAI_SANITIZE=ON
+	cmake --build build/p25cai --parallel 4
+	ctest --test-dir build/p25cai --output-on-failure
+
 protocol-test:
 	python3 tests/protocol/test_p25.py
 	sh tests/protocol/run_sanitizers.sh
 
 codec-test:
+	python3 third_party/imbe/tools/test_c.py --out build/imbe-c-tests --sanitize
 	python3 tools/test_codec_slot.py
 	python3 experiments/codec/build.py --full-ubsan
 	mkdir -p artifacts/codec-tests logs
@@ -29,6 +37,9 @@ runtime-test:
 voice-test:
 	python3 tools/test_voice.py
 
+nrfb-test:
+	python3 tools/test_nrfb.py
+
 native-test:
 	python3 tools/test_native_modem.py
 
@@ -38,4 +49,4 @@ receive-audio-test:
 classic-test:
 	python3 tools/test_classic.py
 
-test: protocol-test codec-test runtime-test voice-test native-test receive-audio-test classic-test
+test: cai-test protocol-test codec-test runtime-test voice-test native-test receive-audio-test classic-test nrfb-test

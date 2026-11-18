@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "native_lab.h"
 #include "board.h"
 #include "radio/beep.h"

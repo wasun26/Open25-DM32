@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Real IMBE + CAI + conventional lifecycle + native PHY adapter, host only."""
 from pathlib import Path
 import importlib.util
@@ -16,6 +16,7 @@ def run(args):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    run(["python3", "tools/sources.py", "verify-vendored"])
     spec = importlib.util.spec_from_file_location("cai_oracle", ROOT / "tests/protocol/test_p25.py")
     oracle = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(oracle)
@@ -30,11 +31,15 @@ def main():
         for name, data in fixtures.items()))
     run(["python3", "experiments/codec/build.py", "--full-ubsan"])
     flags = ["-O1", "-g", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
-             "-fno-omit-frame-pointer", "-Isrc/p25", "-Isrc/codec", "-I" + str(OUT)]
+             "-fno-omit-frame-pointer", "-Isrc/p25", "-Isrc/codec", "-Ithird_party/p25cai/include", "-I" + str(OUT)]
     objects = []
     for name in ("p25", "voice", "phy_stream", "selftest"):
         obj = OUT / (name + ".o")
         run(["clang", "-std=c11", *flags, "-c", ROOT / "src/p25" / (name + ".c"), "-o", obj])
+        objects.append(obj)
+    for source in sorted((ROOT / "third_party/p25cai/src").glob("*.c")):
+        obj = OUT / ("cai-" + source.stem + ".o")
+        run(["clang", "-std=c11", *flags, "-c", source, "-o", obj])
         objects.append(obj)
     run(["clang", "-std=c11", *flags, "-c", "tests/test_voice.c", "-o", OUT / "test_voice.o"])
     run(["clang++", *flags, OUT / "test_voice.o", *objects, CODEC / "libdm32_imbe.a", "-o", OUT / "test_voice"])

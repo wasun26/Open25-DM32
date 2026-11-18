@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Run actual upstream calibration/storage readers on a private saved image.
  * Every write/erase callback refuses and counts; the input file stays read-only. */
 #include <stdio.h>

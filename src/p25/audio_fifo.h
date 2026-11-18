@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef P25_AUDIO_FIFO_H
 #define P25_AUDIO_FIFO_H
 #include <stdint.h>

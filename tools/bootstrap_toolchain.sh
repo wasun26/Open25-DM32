@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Native csky-elf GCC/binutils. No radio access. Original archives stay pristine.
 set -eu
 cd "$(dirname "$0")/.."

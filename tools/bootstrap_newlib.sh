@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Complete the existing native CK803S toolchain with a pinned, real target libc.
 set -eu
 cd "$(dirname "$0")/.."

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Offline integration test. This executable has no radio device driver. */
 #include <cstdint>
 #include <cstdio>

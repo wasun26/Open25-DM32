@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Compile portable CAI, compare pinned OP25, exercise FEC and stream loss.
 
 Reference functions are loaded from the pristine source AST without executing
@@ -51,7 +52,8 @@ class RX(C.Structure):
                 ("bad_nids", C.c_uint32), ("truncated_frames", C.c_uint32),
                 ("expected_nac", C.c_uint16), ("symbols", C.c_uint16),
                 ("target_symbols", C.c_uint16), ("max_sync_errors", C.c_uint8),
-                ("inverted", C.c_uint8), ("frame", C.c_uint8 * 216), ("nid", NID)]
+                ("inverted", C.c_uint8), ("frame", C.c_uint8 * 216), ("nid", NID),
+                ("status_updates",C.c_uint32),("status_symbol",C.c_uint8),("status_valid",C.c_bool)]
 
 
 def packed(bits):
@@ -389,14 +391,18 @@ def test_damage(lib, ref):
 
 
 def main():
-    subprocess.run([__import__("sys").executable, str(ROOT / "src/p25/generate_tables.py"), "--check"], check=True)
+    cai = ROOT / "third_party/p25cai"
+    subprocess.run([__import__("sys").executable, str(ROOT / "tools/sources.py"), "verify-vendored"], check=True)
+    subprocess.run([__import__("sys").executable, str(cai / "tools/generate_golay.py"), "--check"], check=True)
     ref = reference()
     results = {"reference_op25_commit": PIN, "random_seed": SEED, "hardware_verified": False}
     with tempfile.TemporaryDirectory(prefix="dm32-p25-test-") as dirname:
         tmp = Path(dirname)
         output = tmp / "libp25.so"
         subprocess.run([os.environ.get("CC", "cc"), "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-O2", "-shared", "-fPIC",
-                        str(ROOT / "src/p25/p25.c"), "-o", str(output)], check=True)
+                        "-I" + str(cai / "include"), str(ROOT / "src/p25/p25.c"),
+                        *[str(path) for path in sorted((cai / "src").glob("*.c"))],
+                        "-o", str(output)], check=True)
         lib = C.CDLL(str(output))
         configure(lib)
         oracle = channel_oracle(tmp)

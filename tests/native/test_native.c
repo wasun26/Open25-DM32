@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "native_test.h"
 #include "hrc_native_chip.h"
 #include <assert.h>

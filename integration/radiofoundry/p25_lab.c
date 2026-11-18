@@ -1,10 +1,11 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
-/* User-authorized development derivative; not an MIT-only upstream submission. */
+/* SPDX-License-Identifier: MIT */
+/* Conventional P25 worker and device/audio integration. */
 #include <string.h>
 #include "p25_lab.h"
 #include "selftest.h"
 #include "phy_stream.h"
 #include "audio_fifo.h"
+#include "mic_condition.h"
 #include "cpu_profile.h"
 #include "config.h"
 #include "board.h"
@@ -52,13 +53,18 @@ static p25_phy_rx phy;
 static uint32_t live_sid;
 #if CONFIG_P25_CHANNELS
 static p25_call channel_call;
+static uint16_t channel_rx_nac;
+static uint8_t channel_selective;
 static uint32_t channel_voice_ms;
 static bool channel_voice_seen;
-int p25_lab_set_channel(uint16_t receive_nac,uint16_t talkgroup,uint32_t radio_id)
+int p25_lab_set_channel(uint16_t receive_nac,uint16_t transmit_nac,uint16_t talkgroup,uint32_t radio_id,int selective)
 {
     taskENTER_CRITICAL();
     int ok=state!=1;
-    if(ok)channel_call=(p25_call){.nac=receive_nac,.talkgroup=talkgroup,.source_id=radio_id};
+    if(ok){
+        channel_rx_nac=receive_nac;channel_selective=selective!=0;
+        channel_call=(p25_call){.nac=transmit_nac,.talkgroup=talkgroup,.source_id=radio_id};
+    }
     taskEXIT_CRITICAL();
     return ok;
 }
@@ -67,6 +73,7 @@ int p25_lab_channel_receiving(void)
 { return state==1 && request_mode==5 && channel_voice_seen && (uint32_t)(hal_millis()-channel_voice_ms)<650u; }
 #endif
 static volatile uint8_t live_released,live_capturing;
+static volatile uint32_t live_key_frame;
 static uint32_t live_mic_frames,live_peak,live_encode_max,live_encode_us,live_slow;
 static uint32_t live_first_us,live_last_us,live_encoded;
 static uint16_t live_fifo_high;
@@ -88,6 +95,12 @@ int p25_lab_live_begin(uint32_t sid)
     return ok;
 }
 void p25_lab_live_up(void) { live_released=1; }
+void p25_lab_live_key(void)
+{
+    /* Native RF callback runs with interrupts excluded; tag the first PCM
+     * block containing the switch, regardless of worker/FIFO scheduling. */
+    if(live_capturing)live_key_frame=live_mic_frames;
+}
 
 int p25_lab_channel_rx(uint32_t hz)
 {
@@ -96,8 +109,8 @@ int p25_lab_channel_rx(uint32_t hz)
     if (ok) {
         frequency=hz;
 #if CONFIG_P25_CHANNELS
-        nac=channel_call.nac==0xF7Eu?P25_NAC_ANY:channel_call.nac;
-        group=channel_call.talkgroup;channel_voice_seen=false;
+        nac=channel_rx_nac==0xF7Eu?P25_NAC_ANY:channel_rx_nac;
+        group=channel_selective?channel_call.talkgroup:0;channel_voice_seen=false;
 #else
         nac=0x293;group=1;
 #endif
@@ -141,6 +154,8 @@ static int live_run(void)
     const p25_call call={0x293,1,1,0,0,0};
 #endif
     int16_t pcm[160];
+    p25_mic_condition conditioner;
+    p25_mic_condition_init(&conditioner);
     uint8_t raw[36],queued=0;
     unsigned lead=3;
     bool kicked=false,sealed=false,closed=false;
@@ -148,6 +163,7 @@ static int live_run(void)
     uint32_t sid=live_sid;
     live_mic_frames=live_peak=live_encode_max=live_encode_us=live_slow=live_encoded=0;
     live_first_us=live_last_us=live_fifo_high=live_overflows=0;
+    live_key_frame=UINT32_MAX;
     native_state=NT_ARMED;
     native_reason=NT_OK;
     p25_audio_fifo_reset(&fifo);
@@ -198,10 +214,9 @@ static int live_run(void)
                     unsigned magnitude=(unsigned)(sample<0?-sample:sample);
                     if (magnitude>live_peak) live_peak=magnitude;
                 }
-            } else if (closing && voice.voice_count) {
-                memset(pcm,0,sizeof pcm);
-                have=1;
+                p25_mic_condition_block(&conditioner,pcm,live_encoded==live_key_frame);
             } else if (closing) {
+                /* Voice owns codec tail and LDU padding after the final PCM. */
                 ok=p25_voice_tx_end(&voice)!=0;
                 if (p25_voice_tx_done(&voice)) break; /* an empty PTT */
                 closed=true;
@@ -227,13 +242,12 @@ static int live_run(void)
     native_lab_voice_stop(sid);
     board.audio->stop();
     board.native_mic_route(false);
-    uint32_t end=hal_millis()+500;
-    int released;
-    while (!(released=native_lab_voice_release(sid)) && (int32_t)(hal_millis()-end)<0)
+    /* The radio task owns cleanup; do not abandon its reservation on a delay. */
+    while (!native_lab_voice_release(sid))
         vTaskDelay(pdMS_TO_TICKS(2));
     live_fifo_high=fifo.high_water;live_overflows=fifo.overflows;
     p25_voice_tx_abort(&voice);
-    return ok && !stop_requested && !live_overflows && released;
+    return ok && !stop_requested && !live_overflows;
 }
 #endif
 int p25_lab_busy(void) { return state==1; }
@@ -433,10 +447,8 @@ static int receive_run(void)
 #if CONFIG_P25_NATIVE
     if(session) {
         native_lab_voice_stop(session);
-        uint32_t end=hal_millis()+500;
-        int released;
-        while(!(released=native_lab_voice_release(session)) && (int32_t)(hal_millis()-end)<0)relax();
-        if(!released)ok=0;
+        /* Keep ownership until the radio task confirms hardware cleanup. */
+        while(!native_lab_voice_release(session))relax();
     }
 #endif
     if(sample_checks)pcm_crc^=0xffffffffu;

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Actual P25 microphone/playback callbacks and shared local feedback ownership. */
 #include <assert.h>
 #include <stdio.h>

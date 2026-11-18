@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Actual generated GPIO/DAC/SPI HAL, NOR, FD6818, storage and native controller.
  * Only the SoC registers, scheduler and external buses are host doubles. */
 #include <assert.h>

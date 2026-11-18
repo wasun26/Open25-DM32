@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Fetch or verify the pinned Classic build and regression dependencies."""
 import argparse
 import hashlib
@@ -23,10 +23,34 @@ def git(path, *args):
     return subprocess.check_output(['git', '-C', str(path), *args])
 
 
+def verify_vendored():
+    """Check the pinned source snapshots and their existing caller bindings."""
+    lock = json.loads((ROOT / 'sources.lock.json').read_text())
+    for record in lock.get('vendored', []):
+        folder = ROOT / record['path']
+        expected = record['files']
+        actual = {str(p.relative_to(folder)) for p in folder.rglob('*')
+                  if p.is_file() and '__pycache__' not in p.parts}
+        if actual != set(expected):
+            raise ValueError('Vendored file list mismatch: ' + record['path'])
+        for relative, checksum in expected.items():
+            path = folder / relative
+            if path.is_symlink() or digest(path) != checksum:
+                raise ValueError('Vendored source changed: ' + str(path))
+        for source, destination in record.get('copies', {}).items():
+            path = ROOT / destination
+            if path.is_symlink() or digest(path) != expected[source]:
+                raise ValueError('Vendored caller binding changed: ' + destination)
+        print('verified', record['path'], record['commit'])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('fetch', 'verify'))
+    parser.add_argument('command', choices=('fetch', 'verify', 'verify-vendored'))
     args = parser.parse_args()
+    verify_vendored()
+    if args.command == 'verify-vendored':
+        return
     fetch = args.command == 'fetch'
     lock = json.loads((ROOT / 'sources.lock.json').read_text())
     for record in lock['repositories']:

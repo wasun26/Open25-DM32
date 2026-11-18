@@ -3,12 +3,6 @@
   "note": "Classic build and regression dependencies only; no stock images, manuals or analysis inputs.",
   "repositories": [
     {
-      "path": "research/codec/imbe_vocoder",
-      "url": "https://github.com/nostar/imbe_vocoder.git",
-      "commit": "03423cb00b8e9ba1be164493e8b98b5bd7c1508c",
-      "git_archive_sha256": "a815a6a80cc9b1445fd84bb9ae9d483cf2e2b597c94824b04ff900217159483f"
-    },
-    {
       "path": "research/codec/mbelib",
       "url": "https://github.com/szechyjs/mbelib.git",
       "commit": "9a04ed5c78176a9965f3d43f7aa1b1f5330e771f",
@@ -33,6 +27,103 @@
       "url": "https://ftp.gnu.org/gnu/gcc/gcc-14.3.0/gcc-14.3.0.tar.xz",
       "bytes": 95212220,
       "sha256": "e0dc77297625631ac8e50fa92fffefe899a4eb702592da5c32ef04e2293aca3a"
+    }
+  ],
+  "vendored": [
+    {
+      "name": "p25cai",
+      "path": "third_party/p25cai",
+      "commit": "9f67eee4566c0c58a80f6ab5be872595eff82361",
+      "files": {
+        ".gitignore": "de933c874513f27c7bab6e3911a211997cd2857b203968b0b0ed0d7bfd9b1115",
+        "AGENTS.md": "f16f816dcf464aef774ba107bcacef2c7c10f483948e3467cd480d7daf38d178",
+        "CMakeLists.txt": "8d9036df9d836c190630ff1df9b0666f9a54682d8c56eafe29107081bdf2cef1",
+        "LICENSE": "ea5a582e635b93318adb54e62c7e71165ccf8f3f695811cd51e693c2ec065f34",
+        "README.md": "16f4c8f3ccd69df74faccb89d2dceb5aaf5db35c66c2f0a8ee5cfdeb9ca64660",
+        "SOURCES.md": "c2a7b0f4ab78468c9ca600e2152d4059401ce97ed5e4919b53bfa50051a4ae34",
+        "compat/open25/p25.c": "60eea9f1c99c281617dff185acc054c73b7da3137184efe465ef609f22f31b92",
+        "compat/open25/p25.h": "a42990e8d1dad32eddfd5b97c0d9cac5e8a9cd083a65f974297b25185005fe4c",
+        "include/p25cai.h": "9e42061eab97bf88839646345ccdabebfa0e61724b63d97f9637c67c4ab3a7c1",
+        "src/auth.c": "b9301f4011158e87d425b90e03d95556a84e867bb4a170e4d1c536743d60ed57",
+        "src/blocks.c": "87818bdcec7f156bd27e0b8f4543510dfbc917bb1f930d7f5ab316b868fb1ff9",
+        "src/control.c": "ed65d2fcc95f3c711ada0f1132f795b347960a2436777795ee951ae2d141392f",
+        "src/fec.c": "3d02a6b7ab4d0b534e464e75299a774a53acfb7f805f92c6dfa04e8e43267986",
+        "src/fields.c": "995b046147fbeeb982d88c5e048a7e0dd8bc7242c0f02b18a54ddbd1611440b7",
+        "src/frame.c": "034ded8561a931853c3009986b72450f7f4204a07087d5ed9f9a63d7c0df2711",
+        "src/golay_errors.inc": "581bd4a2bfde6938e9a2894dfdf3041f6ef4cb2455159a5fd80476aea35ee797",
+        "src/internal.h": "6f2690249576d37fcc979ec14f6e50d9ce9d7904d093ccd752675df21fb86dd8",
+        "src/messages.c": "d38ec6c2a56726f023827951c42a4e2acfa6ca8ed962b5cd459003b5fd547fb9",
+        "src/packet.c": "978b3c46f2b9750eaf0d07de8170e35d09eb8ff396cc08d1fd694dd3c297e2b6",
+        "src/trellis.c": "17a387c3d18804a4962436ac9bc8c6dcde64b080573f52d67af496678ce3af99",
+        "src/voice.c": "e8298fb4b806fcb9789f53ef93d00ff13c60f4aaaa274990dec313ee2c636c12",
+        "tests/test_auth.c": "4ed4f311ea0abb7472756bf454e4bf8afa0942a024e0dac8d5f806fdda4841a5",
+        "tests/test_cai.c": "8360b273e89a13634f45e1085564440a00a6db5dc262e74fa847c5cec92ea3c0",
+        "tests/test_control.c": "e5a1366bb59e771d68be5b50dcdb05c8d54cd864ea0714a53bd3f036cc2a00f7",
+        "tests/test_messages.c": "e9be1502e5ccf9f3464c64b7f974daab2425a83c0399edc8afc6408adbbc1490",
+        "tests/test_open25.c": "fefcddb998d082c5251e1bf385f07653ef99613694c883b767e7603d69d9383b",
+        "tests/test_packet.c": "b1fe7fd75471f890bba3548317e3b2b26afdc6f06d05391bb6b3f1c7e312d01b",
+        "tools/generate_golay.py": "2742a89e4f312aa5cbedc1844990738a16c2bc26588667cd4198514ad9a16e4d"
+      },
+      "copies": {
+        "compat/open25/p25.c": "src/p25/p25.c",
+        "compat/open25/p25.h": "src/p25/p25.h"
+      }
+    },
+    {
+      "name": "imbe",
+      "path": "third_party/imbe",
+      "commit": "5391d896329f1b0b6c4bc0677c2a64a159cd0564",
+      "files": {
+        ".gitignore": "1549e4a6cae4902d9a2ce88230f00e28b9440d24bb104e5e2886a3a2f2948230",
+        "AGENTS.md": "3f23fc14f24d88315c1760f31d3a4741eb5398de194d40f1887b186169cf2946",
+        "LICENSE": "1bcac8a206ce555d0c237d8b668b756f19e13b27f95e4a67494f7ff1d424fc43",
+        "README.md": "c7cd329773bef95952e42e7fd2ebf41f9465539854a13e4adad402004031f9ee",
+        "SOURCES.json": "039d16a1d5eadb66919d6578fdb57f8ac75cde6fcea913884d03a0bd7b6bf04c",
+        "build-options.json": "85dbbd04ad64984a7c1232ea7d497752de5877fc559e1c41dc6779fe90597f2b",
+        "compat/open25/dm32_imbe.h": "8ce2d92554705923291d2d24e2aceb9e509e6c9729712496a147e26242103ef5",
+        "quant-provenance.md": "b93901bbd5612d2d909fe4259174a2a115e6db8de28556d6bd3bf22c7c914a10",
+        "runtime/memory.c": "9c835bb9f2072a2acc9876301f739cce0736dd50849b7ca260d54b939923a349",
+        "src/codec.c": "e5e4117cf67cc283dd6aea839fea6e518bf3d0e96396368465e675e6073a594c",
+        "src/decoder.c": "83753cc329fa063d4ae94d4cbb5503144daf7e3c5cbd71c469b0613866530daf",
+        "src/decoder.h": "0dae97c30c49f323a4cf574898104d3b927d14d82b7330b666d9cd033cdcde16",
+        "src/encoder.c": "2029319424a781feec288aff16838f40014b66c19695a8495a0c4fd236cf3f26",
+        "src/encoder.h": "6be5905829984d46c60337b6d0895fb88a9f33c3af3bda818f3fa48bbf36a9d2",
+        "src/fft.c": "6c41e80846fdbff80dee5eb02a2dede8a2f47447dc395911f32826742b1994e6",
+        "src/imbe_model.h": "09e24dfb0430efb333c7a995f35efcad04044b6bd50e0925dca0dbf955f444c0",
+        "src/math.c": "781965ea2fae67689fd39192e6ae1eb956f61fac03e4ca1e215416311e166c47",
+        "src/quant.c": "672e532d73e2d53983410a1cea372c7ddd7de477e573bcad8ffd325bd2fe63ac",
+        "src/quant.h": "1e9783e200aa06a491c7b7edfe34c1424d5381d7380b3eaa326c6eab14895451",
+        "src/quant_tables.inc": "19aad2620f40e5688d62aa449689e39f33398105054e69ad4dfe8209316efb27",
+        "tests/test_codec.c": "6e2e01eeabfe35c6611a7b5da396c29b7f36eb4904820248baffe1c089751266",
+        "tests/test_decoder.c": "2b22a66f7d766cefc1487592b3b60c34752d4ec122e38a572cec84b08d672620",
+        "tests/test_math.c": "1556f2a88f8e4eb70fc04acb56cef2319b8deb44f5040426aeb2c7e4c3368d52",
+        "tests/test_quant.c": "d16e9ea44894ae4963dbfbe2dd63c54315c719614a9cb336b806d2fbcdda4427",
+        "tools/build.py": "278b5acd3513be9c452957497ceb1be8a1ea12b9fc3c02888338e9fc4bcac01d",
+        "tools/generate_header.py": "a41510458b588517b22a74fa4442406cccbe398788e159ea9927d47ef7ccbd38",
+        "tools/test_c.py": "1ee46242b063846463692e032d59b12ac04b91a741cf330b2c81c6a9e64378d3"
+      },
+      "copies": {
+        "compat/open25/dm32_imbe.h": "src/codec/dm32_imbe.h",
+        "runtime/memory.c": "src/runtime/memory.c"
+      }
+    },
+    {
+      "path": "third_party/rf_codeplug",
+      "commit": "9e1f7209cd00c2575f18c72746ed4dbb1f482f67",
+      "note": "Selected upstream MIT components with reviewed continuation/NAC extensions; original hashes in UPSTREAM.json.",
+      "files": {
+        "README.md": "86c9fb0ee945d5d1c7e8de2dfcce0c0e26245c8227d46e9f6d39eebd0b168a4a",
+        "UPSTREAM.json": "03824268a0d872c52d0b7a204b23e97b926534f768aa25442726076aea111d89",
+        "core/codeplug/codeplug_kv.c": "19a32c3efa9b7746753c6e9bd09d0e752a9dbb6595bc97536e17b14722826f45",
+        "core/codeplug/codeplug_kv.h": "b49254ede208885fe6f1d5c4d392b3f673d0509b8f205f889eb7b94adf04a588",
+        "core/codeplug/codeplug_modes.h": "9f662a2642f890c77ba09541885f742d4ac28688db3ae6fd166098fa2206c16b",
+        "core/codeplug/codeplug_records.c": "6b24702227f6733308793496bbd120770a05a18ce9d80e2fe875e7a8053b36a6",
+        "core/codeplug/codeplug_records.h": "dff2088447c646ab3e4bce49ee8253e93cd1c52760273278381ea623116ef1f0",
+        "core/codeplug/codeplug_tag.c": "eb3470f5eda175dd4ce40cc8f8213d34e45eee6ab903d3271d6d920438165220",
+        "core/codeplug/codeplug_tag.h": "edb47dea6f7444ce92d680ee515e72b838853eb9b496ef4efe8e00bd864ed86f",
+        "core/p25/p25_codeplug.c": "fb56cf54368a00b9dade36d7f7ff7f05d045dde78ff79cb9a40c51429a03afed",
+        "core/p25/p25_codeplug.h": "1a2d439208e51aed52674f8cc718c7384821e9d70e723dea24ee7baa56ccc1f3"
+      }
     }
   ]
 }

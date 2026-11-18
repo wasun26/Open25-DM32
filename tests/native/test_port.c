@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "hrc_native_port.h"
 #include "platform.h"
 #include <assert.h>
@@ -25,7 +25,7 @@ void hrc_irq_enable(uint8_t n,bool on) { uint32_t bit=1u<<(n&31); if(on)mock_pic
 void hrc_irq_register(uint8_t n,hrc_irq_fn fn) { hrc_irq_enable(n,false);hrc_irq_table[n]=fn; }
 void hrc_timer_ack(unsigned n) { acks[n]++; }
 void hrc_timer_stop(unsigned n) { mock_tmr[n]=0; }
-void hrc_timer_periodic(unsigned n,uint32_t us) { assert(n==6);period=us;mock_tmr[n]=3; }
+void hrc_timer_periodic(unsigned n,uint32_t us) { assert(n==HN_GUARD_TIMER);period=us;mock_tmr[n]=3; }
 uint32_t hrc_micros(void) { return clock_us; }
 void hrc7000_audio_bits(hrc7000_t *m,uint32_t set,uint32_t clear) { (void)m;(void)set;(void)clear; }
 static void prior(void) { assert(0); }
@@ -42,6 +42,7 @@ static uint32_t lock_hook(void *p) { (void)p;return hrc_irq_save(); }
 static void unlock_hook(void *p,uint32_t irq) { (void)p;hrc_irq_restore(irq); }
 int main(void)
 {
+    mock_tmr[TIMER_PCM]=1; /* Keep upstream PCM active during native ownership. */
     uint32_t regs[0x600/4]={0};uint8_t buf[0x1000]={0};
     regs[C7_SYS_SOFT_RSTN/4]=0x1ff;
     hrc7000_t modem={.regs=regs,.buf=buf};hn_chip chip;nt_test test;nt_ops ops;
@@ -51,21 +52,21 @@ int main(void)
     mock_pic[0]=0xa1234567;mock_pic[1]=0x13579bde;
     uint32_t masks[2]={mock_pic[0],mock_pic[1]};
     mock_tmr[3]=1;assert(!hn_port_on(&chip,&test));mock_tmr[3]=0;
-    mock_tmr[6]=1;assert(!hn_port_on(&chip,&test));mock_tmr[6]=0;
+    mock_tmr[HN_GUARD_TIMER]=1;assert(!hn_port_on(&chip,&test));mock_tmr[HN_GUARD_TIMER]=0;
     assert(mock_pic[0]==masks[0] && mock_pic[1]==masks[1] && hrc_irq_table[29]==prior);
     nt_config c={145500000,3,2000,250,NT_TRANSMIT,1,0,0};uint8_t raw[36]={0};
     assert(nt_arm(&test,&c,1));assert(nt_load(&test,test.session,0,raw));assert(nt_load(&test,test.session,1,raw));
-    assert(nt_begin(&test,test.session,0));assert(period==1000 && mock_tmr[6]==3 && !depth);
+    assert(nt_begin(&test,test.session,0));assert(period==1000 && mock_tmr[HN_GUARD_TIMER]==3 && !depth);
     assert(!hn_port_on(&chip,&test));
     clock_us=1000;hrc_irq_table[IRQ_MODEM_TS_TX]();assert(test.stats.tx_sent==1);
     hrc_irq_table[IRQ_MODEM_RF_TX]();assert(test.key_requested);
     hrc_irq_fn delayed_pa=hrc_irq_table[IRQ_TIMER3];
     /* No cable command or radio-task service: the real timer ISR expires it. */
-    clock_us=250000;hrc_irq_table[IRQ_TIMER6]();
-    assert(test.state==NT_FAULT && test.reason==NT_LEASE && offs==1 && acks[6]==1);
-    assert((mock_pic[0]&(1u<<IRQ_TIMER3)) && !(mock_pic[0]&(1u<<IRQ_TIMER6)));
+    clock_us=250000;hrc_irq_table[IRQ_TIMER4]();
+    assert(test.state==NT_FAULT && test.reason==NT_LEASE && offs==1 && acks[HN_GUARD_TIMER]==1);
+    assert((mock_pic[0]&(1u<<IRQ_TIMER3)) && !(mock_pic[0]&(1u<<IRQ_TIMER4)));
     delayed_pa();assert(!keys && !mock_tmr[3] && acks[3]==1);
-    assert(nt_cleanup(&test) && !test.owned && !mock_tmr[6]);
+    assert(nt_cleanup(&test) && !test.owned && !mock_tmr[HN_GUARD_TIMER]);
     assert(mock_pic[0]==masks[0] && mock_pic[1]==masks[1]);
     for(unsigned i=0;i<64;i++)assert(hrc_irq_table[i]==prior);
     hn_port_restore();delayed_pa();assert(!keys && !depth); /* stale callback after restored context */
@@ -134,15 +135,16 @@ int main(void)
         assert(test.state==NT_RX && test.stats.rx_seen==1 && test.stats.abnormal_irqs==1);
         assert(!test.key_requested && !test.keyed && requests==prior_requests && keys==prior_keys);
         if(call) {
-            clock_us+=499000;hrc_irq_table[IRQ_TIMER6]();
+            clock_us+=499000;hrc_irq_table[IRQ_TIMER4]();
             assert(test.state==NT_FAULT && test.reason==NT_LEASE);
         } else assert(nt_stop(&test,test.session,NT_USER_STOP));
         delayed_pa();assert(keys==prior_keys && !mock_tmr[TIMER_PA]);
-        assert(nt_cleanup(&test) && !test.owned && !mock_tmr[6]);
+        assert(nt_cleanup(&test) && !test.owned && !mock_tmr[HN_GUARD_TIMER]);
         delayed_pa();assert(keys==prior_keys && !depth);
         assert(mock_pic[0]==masks[0] && mock_pic[1]==masks[1]);
         for(unsigned i=0;i<64;i++)assert(hrc_irq_table[i]==prior);
     }
+    assert(mock_tmr[TIMER_PCM]==1 && hrc_irq_table[TIMER_PCM]==prior);
     puts("PASS real native interrupt port: timer conflicts, independent lease shutdown, delayed PA, exact handler/mask restoration");
     return 0;
 }

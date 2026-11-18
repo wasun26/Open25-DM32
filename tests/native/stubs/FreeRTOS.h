@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* HOST TEST DOUBLE ONLY. Never used as target/firmware headers. */
 #ifndef HOST_NATIVE_FREERTOS_H
 #define HOST_NATIVE_FREERTOS_H

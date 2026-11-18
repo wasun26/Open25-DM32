@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "pcm_clock.h"
 int p25_pcm_clock_due(const p25_pcm_clock *c,uint32_t now)
 { return !c->armed || (int32_t)(now-c->next)>=0; }

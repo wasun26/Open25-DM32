@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "native_lab.h"
 #include "board.h"
 #include "hal_time.h"
@@ -37,7 +37,7 @@ static void channel_service(radio_sm_t *sm)
     if(selected && !channel_selected && !voice_owner && !test.owned && !p25_lab_busy()) {
         const channel_t *ch=&sm->view.ch;
         if(!codeplug_p25_valid(ch) || !board_in_band(ch->rx_hz,false))return;
-        if(!p25_lab_set_channel(ch->p25_nac,ch->p25_tg,ch->p25_id))return;
+        if(!p25_lab_set_channel(ch->p25_nac,codeplug_p25_tx_nac(ch),ch->p25_tg,ch->p25_id,ch->p25_squelch==1))return;
         channel_selected=live_enabled=live_rx_pending=true;
         live_tx_pending=false;channel_denial=0;
     }

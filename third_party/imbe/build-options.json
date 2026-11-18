@@ -1,0 +1,32 @@
+{
+  "language": "C11",
+  "sources": [
+    "codec",
+    "encoder",
+    "decoder",
+    "quant",
+    "fft",
+    "math"
+  ],
+  "common_flags": [
+    "-std=c11",
+    "-Os",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-ffunction-sections",
+    "-fdata-sections"
+  ],
+  "target_flags": [
+    "-mcpu=ck803s",
+    "-mlittle-endian",
+    "-mno-high-registers",
+    "-msoft-float",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-Wa,--noexecstack",
+    "-O2",
+    "-DIMBE_SINE_RAM=1"
+  ],
+  "scope": "CK803S target O2 overrides compact generic Os. IMBE_SINE_RAM places the small sine function and1024-byte table in startup-copied RAM sections. Callers must map .ramfunc* and .ramdata*; context and soft-float low-register ABI are unchanged."
+}

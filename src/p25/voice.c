@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "voice.h"
 #include "p25_runtime.h"
 
@@ -66,7 +66,7 @@ void p25_voice_rx_dibit(p25_voice *v, uint8_t dibit)
             v->crypto_clear = 0;
         v->active_group = d.talkgroup;
         v->active_source = d.source_id;
-        v->have_group = d.talkgroup && d.source_id && d.source_id <= 9999999u;
+        v->have_group = d.talkgroup && d.source_id && d.source_id <= 0xFFFFFEu;
         if (!d.clear_voice) v->crypto_clear = 0;
         /* LC's unprotected bit alone cannot override an encrypted ALGID.
          * Late entry waits for a valid LDU2 encryption sync. */
@@ -113,7 +113,7 @@ static void commit_packet(p25_voice *v, uint16_t bytes)
 void p25_voice_tx_abort(p25_voice *v)
 {
     v->transmitting = v->started = v->stopping = v->terminator_pending = 0;
-    v->count = v->head = v->tail = v->voice_count = 0;
+    v->count = v->head = v->tail = v->voice_count = v->flush_remaining = 0;
     v->packet_symbol = 0;
     p25_voice_rx_reset(v);
 }
@@ -128,7 +128,7 @@ static int fail(p25_voice *v)
 int p25_voice_tx_begin(p25_voice *v, const p25_call *call)
 {
     if (!call || v->transmitting || !call->talkgroup ||
-        !call->source_id || call->source_id > 9999999u) return 0;
+        !call->source_id || call->source_id > 0xFFFFFEu) return 0;
     p25_voice_tx_abort(v);
     v->fault = 0;
     if (p25_encode_hdu(call, v->queue[0].data)) return 0;
@@ -139,9 +139,8 @@ int p25_voice_tx_begin(p25_voice *v, const p25_call *call)
     return 1;
 }
 
-int p25_voice_tx_pcm(p25_voice *v, int16_t pcm[160])
+static int encode_frame(p25_voice *v, int16_t pcm[160])
 {
-    if (!v->transmitting || v->stopping || !pcm) return 0;
     if (!dm32_imbe_encode(&v->codec, pcm, v->voice[v->voice_count])) return fail(v);
     if (++v->voice_count < 9) return 1;
     p25_voice_packet *p = next_packet(v);
@@ -154,26 +153,45 @@ int p25_voice_tx_pcm(p25_voice *v, int16_t pcm[160])
     return 1;
 }
 
+int p25_voice_tx_pcm(p25_voice *v, int16_t pcm[160])
+{
+    if (!v->transmitting || v->stopping || !pcm) return 0;
+    return encode_frame(v, pcm);
+}
+
 static void append_terminator(p25_voice *v)
 {
     p25_voice_packet *p = next_packet(v);
-    if (v->terminator_pending && p) {
+    if (v->terminator_pending && !v->flush_remaining && !v->voice_count && p) {
         if (p25_encode_tdu(&v->call, p->data)) { fail(v); return; }
         commit_packet(v, P25_TDU_BYTES);
         v->terminator_pending = 0;
     }
 }
 
+/* Finishing owns the remaining codec tail and LDU padding. A full queue is
+ * backpressure here: wait before the ninth encode, so neither codec history
+ * nor the remaining-tail count advances until its LDU can be committed. */
+static void finish_call(p25_voice *v)
+{
+    if (!v->stopping) return;
+    while (v->flush_remaining || v->voice_count) {
+        if (v->voice_count == 8 && !next_packet(v)) return;
+        int16_t silence[160] = {0};
+        if (!encode_frame(v, silence)) return;
+        if (v->flush_remaining) --v->flush_remaining;
+    }
+    append_terminator(v);
+}
+
 int p25_voice_tx_end(p25_voice *v)
 {
     if (!v->transmitting || v->stopping) return 0;
     if (!v->started && !v->voice_count) { p25_voice_tx_abort(v); return 1; }
-    while (v->voice_count) {
-        int16_t silence[160] = {0};
-        if (!p25_voice_tx_pcm(v, silence)) return 0;
-    }
-    v->stopping = v->terminator_pending = 1;
-    append_terminator(v);
+    v->stopping = 1;
+    v->flush_remaining = DM32_IMBE_ENCODER_FLUSH_FRAMES;
+    v->terminator_pending = 1;
+    finish_call(v);
     return !v->fault;
 }
 
@@ -182,7 +200,8 @@ size_t p25_voice_tx_read(p25_voice *v, uint8_t *out, size_t capacity)
     if (!v->transmitting || !v->started || !out || !capacity) return 0;
     size_t n = 0;
     while (n < capacity) {
-        append_terminator(v);
+        finish_call(v);
+        if (!v->transmitting) break;
         if (!v->count) {
             if (v->stopping) { p25_voice_tx_abort(v); break; }
             v->tx_underruns++;
@@ -199,7 +218,8 @@ size_t p25_voice_tx_read(p25_voice *v, uint8_t *out, size_t capacity)
         }
     }
     /* A read ending exactly at the TDU boundary is done immediately. */
-    if (v->transmitting && v->stopping && !v->count && !v->terminator_pending)
+    if (v->transmitting && v->stopping && !v->count && !v->terminator_pending &&
+        !v->flush_remaining && !v->voice_count)
         p25_voice_tx_abort(v);
     return n;
 }

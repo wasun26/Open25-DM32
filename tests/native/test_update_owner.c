@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Reuse the real native-lab fixtures; only the updater lease is a double. */
 #define main native_fixture_main
 #include "test_lab.c"

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* HR_C7000 guide 9.4-9.6, printed 294-297, Tables 46-49/Figures 70-71;
  * RadioFoundry dfbaf20c hrc7000_bs.c raw-TX sequencing. Hardware-unverified.
  * RF_MODE's continuous-RX bit is changed only while P25 owns the modem, then

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef NATIVE_TEST_H
 #define NATIVE_TEST_H
 #include <stdint.h>

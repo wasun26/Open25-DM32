@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Compare with independent host libc, including all overlap directions and
  * unaligned subranges. Custom runtime symbols are renamed at test compile. */
 #include <assert.h>

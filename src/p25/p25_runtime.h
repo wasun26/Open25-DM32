@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef DM32_P25_RUNTIME_H
 #define DM32_P25_RUNTIME_H
 

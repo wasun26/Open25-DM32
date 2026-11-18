@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef P25_SELFTEST_H
 #define P25_SELFTEST_H
 #include "voice.h"

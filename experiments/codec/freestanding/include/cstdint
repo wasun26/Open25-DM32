@@ -1,2 +1,0 @@
-/* Minimal compile-only C++ header adapter. GCC supplies stdint.h. */
-#include <stdint.h>

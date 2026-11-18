@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "selftest.h"
 #include "phy_stream.h"
 #include "p25_runtime.h"
@@ -20,7 +20,7 @@ static void sink(void *ctx, const int16_t pcm[160])
 
 void p25_selftest_run(p25_voice *v, p25_selftest_result *r, uint32_t (*micros)(void), void (*yield)(void))
 {
-    uint8_t air[576] = {0};
+    uint8_t air[792] = {0};
     size_t at = 0, valid_bytes = 0;
     memset(r, 0, sizeof *r);
     r->session_bytes = sizeof *v;
@@ -53,9 +53,9 @@ void p25_selftest_run(p25_voice *v, p25_selftest_result *r, uint32_t (*micros)(v
         if (yield) yield();
     }
     if (!p25_voice_tx_end(v)) return;
-    for (unsigned i = 0; i < 2; i++) {
+    for (unsigned i = 0; i < 8; i++) {
         size_t n = p25_phy_tx_block(v, &air[at]);
-        if (n != (i ? 36u : 144u) || v->fault) return;
+        if (n != (i == 7 ? 36u : 144u) || v->fault) return;
         at += 36;
         valid_bytes += n / 4;
     }
@@ -77,6 +77,6 @@ void p25_selftest_run(p25_voice *v, p25_selftest_result *r, uint32_t (*micros)(v
         if (yield) yield();
     }
     r->pcm_crc ^= 0xffffffffu;
-    r->ok = valid_bytes == 549 && r->pcm_blocks == 18 && r->nonzero_samples &&
-            v->rx_frames == 4 && !v->rx_muted && !v->rx_erasures && !v->fault;
+    r->ok = valid_bytes == 765 && r->pcm_blocks == 27 && r->nonzero_samples &&
+            v->rx_frames == 5 && !v->rx_muted && !v->rx_erasures && !v->fault;
 }

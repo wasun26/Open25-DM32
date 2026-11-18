@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #if CONFIG_FIRSTBOOT
 #include "firstboot/firstboot.h"
 bool board_firstboot_pin_level(uint8_t pin,bool requested)

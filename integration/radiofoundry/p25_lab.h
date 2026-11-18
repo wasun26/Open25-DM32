@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef P25_LAB_H
 #define P25_LAB_H
 #include <stddef.h>
@@ -10,9 +10,11 @@ size_t p25_lab_command(const uint8_t *req, uint16_t len, uint8_t *out, size_t ca
 int p25_lab_live_begin(uint32_t session);
 int p25_lab_channel_rx(uint32_t frequency_hz);
 void p25_lab_live_up(void);
+/* Native RF-switch edge, ISR-safe; only marks the corresponding mic block. */
+void p25_lab_live_key(void);
 #if CONFIG_P25_CHANNELS
 /* Worker input snapshot; changed only after the previous worker has stopped. */
-int p25_lab_set_channel(uint16_t nac, uint16_t talkgroup, uint32_t radio_id);
+int p25_lab_set_channel(uint16_t rx_nac, uint16_t tx_nac, uint16_t talkgroup, uint32_t radio_id, int selective);
 void p25_lab_channel_stop(void);
 int p25_lab_channel_receiving(void);
 #endif

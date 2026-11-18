@@ -1,0 +1,28 @@
+{
+  "repository": "https://github.com/RadioFoundry/RadioFoundry",
+  "commit": "9e1f7209cd00c2575f18c72746ed4dbb1f482f67",
+  "license": "MIT",
+  "original_sha256": {
+    "core/codeplug/codeplug_kv.c": "bba6bfb8cbd60d895045a84da48922d3c16d633be4b1057cd25e7fd9442a3066",
+    "core/codeplug/codeplug_kv.h": "b8ae328cd16acd2f4d8b1f4538116537f01ce59af96940c7f7725005839eb234",
+    "core/codeplug/codeplug_tag.c": "eb3470f5eda175dd4ce40cc8f8213d34e45eee6ab903d3271d6d920438165220",
+    "core/codeplug/codeplug_tag.h": "edb47dea6f7444ce92d680ee515e72b838853eb9b496ef4efe8e00bd864ed86f",
+    "core/codeplug/codeplug_modes.h": "9f662a2642f890c77ba09541885f742d4ac28688db3ae6fd166098fa2206c16b",
+    "core/codeplug/codeplug_records.c": "6b24702227f6733308793496bbd120770a05a18ce9d80e2fe875e7a8053b36a6",
+    "core/codeplug/codeplug_records.h": "dff2088447c646ab3e4bce49ee8253e93cd1c52760273278381ea623116ef1f0",
+    "core/p25/p25_codeplug.c": "e2c8e574db47f2a1a5279659696860091f8baf5fd1cab56c402f738899f691f7",
+    "core/p25/p25_codeplug.h": "add8a4a3ba3e9fe16be99870a9c1a613667a02cc69c48028639eca267935d595"
+  },
+  "local_changes": {
+    "core/codeplug/codeplug_kv.c": "Implement the reserved RFKV v1 continuation, atomic COW publication, bounded image-offset pool and direct page edits; preserve unknown entries.",
+    "core/codeplug/codeplug_kv.h": "Cursor fields and constants for the specified continuation chain.",
+    "core/p25/p25_codeplug.c": "Retain TX NAC presence independently of its numeric value.",
+    "core/p25/p25_codeplug.h": "Expose the inherited-versus-explicit TX NAC state to callers."
+  },
+  "local_sha256": {
+    "core/codeplug/codeplug_kv.c": "19a32c3efa9b7746753c6e9bd09d0e752a9dbb6595bc97536e17b14722826f45",
+    "core/codeplug/codeplug_kv.h": "b49254ede208885fe6f1d5c4d392b3f673d0509b8f205f889eb7b94adf04a588",
+    "core/p25/p25_codeplug.c": "fb56cf54368a00b9dade36d7f7ff7f05d045dde78ff79cb9a40c51429a03afed",
+    "core/p25/p25_codeplug.h": "1a2d439208e51aed52674f8cc718c7384821e9d70e723dea24ee7baa56ccc1f3"
+  }
+}

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Actual native board glue; hardware callees are bounded host doubles. */
 #include "config.h"
 #include "hal_radio.h"
@@ -40,17 +40,19 @@ void hn_init(hn_chip *chip,hrc7000_t *m,const hn_hooks *hooks,nt_ops *ops)
 int hn_port_on(hn_chip *chip,nt_test *t) { (void)chip;(void)t;return 1; }
 void hn_port_quiet(void) { }
 void hn_port_restore(void) { }
+void p25_lab_live_key(void) { }
 #include "dm32_native.inc"
 int main(void)
 {
     dm32_native_mic_route(true);dm32_native_mic_route(false);
     assert(mic_route_writes==2 && speaker_restores==1);
+    timers[6]=1; /* upstream PCM can be active before native P25 setup */
     native_init();nt_test t;nt_init(&t,NULL);
     nt_config c={.frequency_hz=145500000,.blocks=4,.duration_ms=1000,.lease_ms=250,.mode=NT_TRANSMIT,.p25_sync=1};
     assert(nt_arm(&t,&c,1));t.owned=1;t.started_us=t.ping_us=clock_us;native_chip.test=&t;
     cal_valid=false;assert(!native_prepare(NULL,&c));
     assert(!holds && !tx_calls && !firstboot_tx_allowed(FB_BOARD_TX));
-    cal_valid=true;timers[6]=1;assert(!native_prepare(NULL,&c));timers[6]=0;
+    cal_valid=true;timers[HN_GUARD_TIMER]=1;assert(!native_prepare(NULL,&c));timers[HN_GUARD_TIMER]=0;
     assert(!holds && !firstboot_tx_allowed(FB_BOARD_TX));
     assert(native_prepare(NULL,&c) && tx_calls==1 && firstboot_tx_allowed(FB_BOARD_TX));
     native_off(NULL);assert(safe_calls==1 && !firstboot_tx_allowed(FB_BOARD_TX));

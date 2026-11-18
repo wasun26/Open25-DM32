@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 /* Host test double only. */
 typedef void *TaskHandle_t;
 #define taskSCHEDULER_RUNNING 1
