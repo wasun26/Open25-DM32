@@ -591,7 +591,7 @@ def main():
     b = f"build/dm32-p25-{suffix}"
     command = ["make", "-j8", "BOARD=dm32", f"CROSS={ROOT}/toolchain/bin/csky-elf-", f"BUILD={b}",
         "CONFIG_P25=" + ("n" if args.disable else "y"), "CONFIG_P25_NATIVE="+("y" if native else "n"), "CONFIG_DMR_IP_GATEWAY=n", "CONFIG_NET_PPP=n",
-        "CONFIG_APRS="+("y" if args.classic else "n"), "CONFIG_SFR=n", "CONFIG_HOTSPOT=n", "CONFIG_ZONE_SHARE=n",
+        "CONFIG_APRS=n", "CONFIG_SFR=n", "CONFIG_HOTSPOT=n", "CONFIG_ZONE_SHARE=n",
         'RFOUNDRY_VERSION='+('open25-'+identity if args.classic else 'dfbaf20c-p25-'+identity), f"RFOUNDRY_GIT_TIME={git(UP, 'show', '-s', '--format=%ct', 'HEAD')}",
         "RFOUNDRY_GIT_DIRTY=1",
         "CONFIG_FIRSTBOOT="+("y" if args.first_boot else "n"),

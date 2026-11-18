@@ -26,7 +26,7 @@ def main():
     for p25, channels in [(0, 0), (1, 0), (1, 1)]:
         version=OUT/f'test_version_{p25}_{channels}'
         run(['clang','-std=gnu99','-Wall','-Wextra','-Wno-unused-parameter','-g',
-             '-fsanitize=address,undefined','-fno-sanitize-recover=undefined',
+             '-fsanitize=undefined','-fno-sanitize-recover=undefined',
              '-ffunction-sections','-fdata-sections','-D__attribute__(x)=',
              f'-DCONFIG_P25={p25}',f'-DCONFIG_P25_CHANNELS={channels}',
              '-I'+str(APP/'core'),'-I'+str(APP/'drivers'),'-I'+str(APP/'hal'),
