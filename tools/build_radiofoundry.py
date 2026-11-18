@@ -366,15 +366,16 @@ def prepare():
         ('\t\tif (on) {\n\t\t\tamp(AMP_PCM, true);\n\t\t}\n\t}\n\thrc_irq_restore(s);',
          '\t\tif (on) {\n#if !CONFIG_P25\n\t\t\tamp(AMP_PCM, true);\n#endif\n\t\t}\n\t}\n#if CONFIG_P25\n\tif (on) amp(AMP_PCM, hrc_audio_pcm_amp_wanted());\n#endif\n\thrc_irq_restore(s);'),
         ("static void pa_key(void)\n{", "static void pa_key(void)\n{\n#if CONFIG_FIRSTBOOT\n\tif (!firstboot_tx_allowed(FB_PA_KEY)) { firstboot_deny(FB_PA_KEY); board_rf_safe(); return; }\n#endif"),
+        ('\t.rx_sleep = rx_sleep,',
+         '\t.rx_sleep = rx_sleep,\n\t.fm_bw = fm_bw,'),
+        ('static void rx_sleep(bool sleep)',
+         'static void fm_bw(uint8_t bw)\n{\n\tif (mode == RADIO_MODE_FM && !transmitting) {\n\t\tfd6818_set_bandwidth(&fd, fm_bw_reg(bw));\n\t}\n}\n\nstatic void rx_sleep(bool sleep)'),
         ("static void dmr_rf_switch(bool tx)\n{", "static void dmr_rf_switch(bool tx)\n{\n#if CONFIG_FIRSTBOOT\n\tif (tx && !firstboot_tx_allowed(FB_RF_SWITCH)) { firstboot_deny(FB_RF_SWITCH); board_rf_safe(); return; }\n#endif"),
         ("static bool tx(uint32_t hz, radio_bw_t bw, uint8_t power, const subtone_t *tone)\n{", "static bool tx(uint32_t hz, radio_bw_t bw, uint8_t power, const subtone_t *tone)\n{\n#if CONFIG_FIRSTBOOT\n\tif (!firstboot_tx_allowed(FB_BOARD_TX) || hz!=145500000u || bw!=RADIO_BW_12K5 || power!=0 || mode!=RADIO_MODE_DMR) { firstboot_deny(FB_BOARD_TX); board_rf_safe(); return false; }\n#endif"),
         ("static void init(void)", "#if CONFIG_P25_NATIVE\nstatic void native_init(void);\n#endif\nstatic void init(void)"),
         ("hrc_fm_rx_attach(&modem);", "hrc_fm_rx_attach(&modem);\n#if CONFIG_P25_NATIVE\n\tnative_init();\n#endif"),
     ])
     # Append board glue while preserving ownership checks on generated files.
-    board_path=DEST / "boards/dm32/radio_dm32.c"
-    board_body=board_path.read_bytes()
-    write_owned(board_path,board_body+b'\n#include "dm32_native.inc"\n',board_body)
     transform("platform/hrc7000/gpio.c", [
         ('#include "platform.h"', '#include "platform.h"\n#include "config.h"'),
         ('\tbank_rmw(hrc_gpio_bank(pin) + GPIO_DR, hrc_gpio_bit(pin), level);', '#if CONFIG_FIRSTBOOT\n\tlevel=board_firstboot_pin_level(pin,level);\n#endif\n\tbank_rmw(hrc_gpio_bank(pin) + GPIO_DR, hrc_gpio_bit(pin), level);')])
@@ -414,10 +415,14 @@ def prepare():
     transform("core/input/input.h", [("uint32_t input_raw_keys(void);", "uint32_t input_raw_keys(void);\n#if CONFIG_DEV_TX\nbool input_physical_ptt(void);\nbool input_ptt_down(void);\n#endif")])
     transform("core/radio/radio.h", [
         ("\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)",
-         "\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)\n\tbool standby_led;\t// blink green LED periodically while idle/standby\n\tuint8_t standby_gap_s;\t// standby LED blink interval in seconds (1..30)\n\tuint16_t standby_on_ms;\t// standby LED blink duration in ms (50..1000)\n\tuint8_t led_style;\t// RX/TX LED style: 0 default, 1 Hytera, 2 Motorola\n\tbool auto_sql;\t\t// adaptive FM squelch from channel noise floor"),
+         "\tbool talk_permit;\t// DMR: the talk permit tone when the voice goes on air (channels without no_beep)\n\tbool standby_led;\t// blink green LED periodically while idle/standby\n\tuint8_t standby_gap_s;\t// standby LED blink interval in seconds (1..30)\n\tuint16_t standby_on_ms;\t// standby LED blink duration in ms (50..1000)\n\tuint8_t led_style;\t// RX/TX LED style: 0 default, 1 Hytera, 2 Motorola\n\tbool auto_sql;\t\t// adaptive FM squelch from channel noise floor\n\tbool auto_power_save;\t// enable rx_save automatically on low battery\n\tbool fm_auto_clear;\t// narrow FM bandwidth on weak/noisy RX"),
         ("\tuint8_t squelch;\t// 0 = open .. 9 = tight",
-         "\tuint8_t squelch;\t// 0 = open .. 9 = tight\n\tbool auto_sql;\t\t// adaptive FM squelch enabled\n\tuint8_t sql_eff;\t// effective ASQ level (1..9) when auto_sql is active"),
+         "\tuint8_t squelch;\t// 0 = open .. 9 = tight\n\tbool auto_sql;\t\t// adaptive FM squelch enabled\n\tuint8_t sql_eff;\t// effective ASQ level (1..9) when auto_sql is active\n\tbool auto_save_active;\t// true when auto_power_save is engaging rx_save"),
         ("void radio_req_ptt(bool down);", "void radio_req_ptt(bool down);\n#if CONFIG_DEV_TX\nvoid radio_req_physical_ptt(bool down);\n#endif"),
+    ])
+    transform("hal/hal_radio.h", [
+        ("\tbool (*ref_trim)(int16_t ppb);\n} hal_radio_t;",
+         "\tbool (*ref_trim)(int16_t ppb);\n\tvoid (*fm_bw)(uint8_t bw);\n} hal_radio_t;"),
     ])
     transform("core/radio/radio_task.c", [
         ('#include "config.h"', '#include "config.h"\n#if CONFIG_P25_NATIVE\n#include "native_modem/native_lab.h"\n#endif'),
@@ -449,6 +454,9 @@ def prepare():
         ('bsr      \\t0x304ed8c', 'bsr      \\t0x304ED8C'),
     ])
     classic_channels.prepare(transform)
+    board_path=DEST / "boards/dm32/radio_dm32.c"
+    board_body=board_path.read_bytes()
+    write_owned(board_path,board_body+b'\n#include "dm32_native.inc"\n',board_body)
     classic_standard.prepare(DEST,write_owned)
     # A pending shared beep remains owned by beep.c when digital PCM stops.
     # Reuse the existing own-stream startup and failure cleanup at handoff.
