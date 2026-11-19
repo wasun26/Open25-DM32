@@ -332,6 +332,12 @@ void ui_draw_splash(const char *board_name, const char *version, const char *lin
          '\tif (x + gfx_text_width(f, buf) <= w)\n\t\tgfx_text(f, x, y, buf, asq_shift ? ui_col.warn : ui_col.fg);'),
         ('\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_u32(&b, v->squelch, 1);',
          '\tcase QT_SQUELCH:\n\t\tif (v->temp & RADIO_TEMP_SQUELCH)\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tif (v->auto_sql && v->squelch > 0)\n\t\t\tsb_str(&b, "A");\n\t\tsb_u32(&b, v->squelch, 1);\n\t\tif (v->auto_sql && v->squelch > 0 && v->sql_eff > 0 && v->sql_eff != v->squelch) {\n\t\t\tsb_str(&b, v->sql_eff > v->squelch ? ">" : "<");\n\t\t\tsb_u32(&b, v->sql_eff, 1);\n\t\t}'),
+        ('\tbool pw_temp = v->power != channel_power(v);\n\tif (pw_temp)\n\t\tx = gfx_text(f, x, y, GLYPH_DOT, ui_col.warn);\n\tx = gfx_text(f, x, y, ui_power_name(v->power), pw_temp ? ui_col.warn : ui_col.fg) + f->w;',
+         '\tbool pw_temp = v->power != channel_power(v);\n\tbool pw_eco = v->auto_save_active && v->power_eff < v->power;\n\tif (pw_temp)\n\t\tx = gfx_text(f, x, y, GLYPH_DOT, ui_col.warn);\n\tsb_init(&b, buf, sizeof buf);\n\tsb_str(&b, ui_power_name(v->power));\n\tif (pw_eco) {\n\t\tsb_chr(&b, \'>\');\n\t\tsb_str(&b, ui_power_name(v->power_eff));\n\t}\n\tx = gfx_text(f, x, y, buf, (pw_temp || pw_eco) ? ui_col.warn : ui_col.fg) + f->w;'),
+        ('\tbool pw_temp = v->power != channel_power(v);\n\tif (pw_temp)\n\t\tx = gfx_text(f, x, L->chips_y, GLYPH_DOT, ui_col.warn);\n\tx = gfx_text(f, x, L->chips_y, ui_power_name(v->power), pw_temp ? ui_col.warn : ui_col.fg) + f->w;',
+         '\tbool pw_temp = v->power != channel_power(v);\n\tbool pw_eco = v->auto_save_active && v->power_eff < v->power;\n\tif (pw_temp)\n\t\tx = gfx_text(f, x, L->chips_y, GLYPH_DOT, ui_col.warn);\n\tsb_init(&b, buf, sizeof buf);\n\tsb_str(&b, ui_power_name(v->power));\n\tif (pw_eco) {\n\t\tsb_chr(&b, \'>\');\n\t\tsb_str(&b, ui_power_name(v->power_eff));\n\t}\n\tx = gfx_text(f, x, L->chips_y, buf, (pw_temp || pw_eco) ? ui_col.warn : ui_col.fg) + f->w;'),
+        ('\tcase QT_POWER:\n\t\tif (v->power != channel_power(v))\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_str(&b, ui_power_name(v->power));\n\t\treturn true;',
+         '\tcase QT_POWER:\n\t\tif (v->power != channel_power(v))\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_str(&b, ui_power_name(v->power));\n\t\tif (v->auto_save_active && v->power_eff < v->power) {\n\t\t\tsb_chr(&b, \'>\');\n\t\t\tsb_str(&b, ui_power_name(v->power_eff));\n\t\t}\n\t\treturn true;'),
     ])
     transform('core/ui/ui_svc.h', [
         ('\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_COUNT',
@@ -386,6 +392,7 @@ void ui_draw_splash(const char *board_name, const char *version, const char *lin
          '\tuint32_t batt_ms;\t\t// last battery reading\n\tuint32_t led_now_ms;\t\t// latest poll timestamp for standby LED blink\n\tuint16_t sql_floor_q8;\t\t// adaptive FM noise floor (Q8, 0 = not seeded)\n\tuint8_t sql_settle;\t\t// polls after tune before sampling noise floor\n\tbool fm_narrow_active;\t\t// fm_auto_clear narrowed FM BW to 12.5k'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms);', '''void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms);
 uint8_t radio_sm_tx_check(const radio_sm_t *sm);
+uint8_t radio_sm_effective_power(const radio_sm_t *sm);
 #if CONFIG_P25_CHANNELS
 void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
 #endif'''),
@@ -445,6 +452,10 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
 \t}
 \tuint32_t gap_ms = (uint32_t)(sm->set.standby_gap_s ? sm->set.standby_gap_s : 5u) * 1000u;
 \tuint32_t on_ms = (uint32_t)(sm->set.standby_on_ms ? sm->set.standby_on_ms : 100u);
+\tif (sm->set.auto_power_save && sm->view.battery >= RADIO_BATT_LOW) {
+\t\tgap_ms *= 2u;
+\t\tif (on_ms > 50u) on_ms = 50u;
+\t}
 \tif (on_ms >= gap_ms) on_ms = gap_ms - 1u;
 \tbool standby_blink = !tx && !green && !open && !led_red && !sm->hotspot && !sm->sfr_rpt &&
 \t\tsm->set.standby_led && sm->view.state == RS_IDLE &&
@@ -465,10 +476,45 @@ void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms);
          '\ts->talk_permit = true;\n\ts->standby_gap_s = 5;\n\ts->standby_on_ms = 100;'),
         ('\tif (s->beep_level > 100) {',
          '\tif (s->standby_gap_s == 0) s->standby_gap_s = 5;\n\telse if (s->standby_gap_s > 30) s->standby_gap_s = 30;\n\tif (s->standby_on_ms == 0) s->standby_on_ms = 100;\n\telse if (s->standby_on_ms < 50) s->standby_on_ms = 50;\n\telse if (s->standby_on_ms > 1000) s->standby_on_ms = 1000;\n\tif (s->led_style > 2) s->led_style = 0;\n\tif (s->beep_level > 100) {'),
+        ('static uint8_t channel_power(const channel_t *ch)\n{\n\tif (ch->power == CODEPLUG_POWER_DEFAULT || ch->power >= board.power_count) {\n\t\treturn default_power();\n\t}\n\treturn ch->power;\n}',
+         '''static uint8_t channel_power(const channel_t *ch)
+{
+\tif (ch->power == CODEPLUG_POWER_DEFAULT || ch->power >= board.power_count) {
+\t\treturn default_power();
+\t}
+\treturn ch->power;
+}
+
+uint8_t radio_sm_effective_power(const radio_sm_t *sm)
+{
+\tuint8_t p = sm->view.power;
+\tif (sm->set.auto_power_save && sm->view.battery >= RADIO_BATT_LOW) {
+\t\tuint8_t cap = board.power_count > 3u ? 1u : 0u;
+\t\tif (p > cap) p = cap;
+\t}
+\treturn p;
+}
+
+static void auto_save_sync(radio_sm_t *sm)
+{
+\tbool auto_save = sm->set.auto_power_save && sm->view.battery >= RADIO_BATT_LOW;
+\tuint8_t eff_p = radio_sm_effective_power(sm);
+\tif (auto_save != sm->view.auto_save_active || eff_p != sm->view.power_eff) {
+\t\tsm->view.auto_save_active = auto_save;
+\t\tsm->view.power_eff = eff_p;
+\t\tchanged(sm);
+\t}
+}'''),
+        ('if (!board.radio->tx(ch->tx_hz, (radio_bw_t)ch->bw, sm->view.power, &none)) {',
+         'if (!board.radio->tx(ch->tx_hz, (radio_bw_t)ch->bw, radio_sm_effective_power(sm), &none)) {', 3),
+        ('if (!board.radio->tx(ch->tx_hz, (radio_bw_t)ch->bw, sm->view.power, &ch->tx_tone)) {',
+         'if (!board.radio->tx(ch->tx_hz, (radio_bw_t)ch->bw, radio_sm_effective_power(sm), &ch->tx_tone)) {'),
+        ('\tsm->view.power = (uint8_t)p;',
+         '\tsm->view.power = (uint8_t)p;\n\t\tsm->view.power_eff = radio_sm_effective_power(sm);'),
         ('\tsm->set = *s;',
-         '\tif (s->auto_sql != sm->set.auto_sql) { sm->sql_floor_q8 = 0; sm->sql_settle = 0; }\n\tsm->set = *s;\n\tsm->view.auto_sql = sm->set.auto_sql;'),
+         '\tif (s->auto_sql != sm->set.auto_sql) { sm->sql_floor_q8 = 0; sm->sql_settle = 0; }\n\tsm->set = *s;\n\tsm->view.auto_sql = sm->set.auto_sql;\n\tauto_save_sync(sm);'),
         ('\tsm->view.tot_s = sm->set.tot_s;',
-         '\tsm->view.tot_s = sm->set.tot_s;\n\tsm->view.auto_sql = sm->set.auto_sql;'),
+         '\tsm->view.tot_s = sm->set.tot_s;\n\tsm->view.auto_sql = sm->set.auto_sql;\n\tauto_save_sync(sm);'),
         ('\ts->bcl = st->rs_bcl;\n\ts->roger_beep = (st->rs_flags & SETTINGS_RS_ROGER_BEEP) != 0;\n\ts->tx_inhibit = (st->rs_flags & SETTINGS_RS_TX_INHIBIT) != 0;\n\ts->scan_priority = (st->rs_flags & SETTINGS_RS_SCAN_PRIORITY) != 0;\n\ts->scan_beep = (st->rs_flags & SETTINGS_RS_SCAN_BEEP) != 0;\n\ts->key_beep = (st->rs_flags & SETTINGS_RS_KEY_BEEP) != 0;\n\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;\n\ts->scan_resume = st->rs_scan_resume;',
          '\ts->bcl = st->rs_bcl & 0x03u;\n\ts->roger_beep = (st->rs_flags & SETTINGS_RS_ROGER_BEEP) != 0;\n\ts->tx_inhibit = (st->rs_flags & SETTINGS_RS_TX_INHIBIT) != 0;\n\ts->scan_priority = (st->rs_flags & SETTINGS_RS_SCAN_PRIORITY) != 0;\n\ts->scan_beep = (st->rs_flags & SETTINGS_RS_SCAN_BEEP) != 0;\n\ts->key_beep = (st->rs_flags & SETTINGS_RS_KEY_BEEP) != 0;\n\ts->talk_permit = (st->rs_flags & SETTINGS_RS_NO_TALK_PERMIT) == 0;\n\ts->standby_led = (st->rs_flags & SETTINGS_RS_STANDBY_LED) != 0;\n\ts->auto_sql = (st->rs_flags & SETTINGS_RS_AUTO_SQL) != 0;\n\ts->standby_gap_s = ((st->rs_bcl >> 2) & 0x1Fu) ? (uint8_t)((st->rs_bcl >> 2) & 0x1Fu) : 5u;\n\ts->scan_resume = st->rs_scan_resume & 0x03u;\n\ts->standby_on_ms = ((st->rs_scan_resume >> 2) & 0x1Fu) ? (uint16_t)(((st->rs_scan_resume >> 2) & 0x1Fu) * 50u) : 100u;'),
         ('\ts->rx_save = st->rs_rx_save;',
@@ -555,13 +601,16 @@ static uint8_t squelch_eff_level(const radio_sm_t *sm, uint8_t sq)
 \treturn best;
 }'''),
         ('\tuint8_t open_below = radio_sm_squelch_open_below(sq);',
-         '\tif (!dual_peeking(sm)) auto_sql_update(sm, st.noise, sq);\n\tuint8_t eff_sq = squelch_eff_level(sm, sq);\n\tif (eff_sq != sm->view.sql_eff) { sm->view.sql_eff = eff_sq; changed(sm); }\n\tbool auto_save = sm->set.auto_power_save && sm->view.battery >= RADIO_BATT_LOW;\n\tif (auto_save != sm->view.auto_save_active) { sm->view.auto_save_active = auto_save; changed(sm); }\n\tif (sm->set.fm_auto_clear && sm->view.ch.mode == RADIO_MODE_FM && !sm->view.am && !sm->view.bcast && sm->view.ch.bw == RADIO_BW_25K && sm->view.state == RS_RX && !sm->ptt && !scan_on(&sm->scan)) {\n\t\tif (!sm->fm_narrow_active && st.noise >= 46u) {\n\t\t\tsm->fm_narrow_active = true;\n\t\t\tif (board.radio->fm_bw != NULL) board.radio->fm_bw(RADIO_BW_12K5);\n\t\t} else if (sm->fm_narrow_active && st.noise < 38u) {\n\t\t\tsm->fm_narrow_active = false;\n\t\t\tif (board.radio->fm_bw != NULL) board.radio->fm_bw(RADIO_BW_25K);\n\t\t}\n\t} else if (sm->fm_narrow_active) {\n\t\tsm->fm_narrow_active = false;\n\t\tif (board.radio->fm_bw != NULL) board.radio->fm_bw(sm->view.ch.bw);\n\t}\n\tuint8_t open_below = squelch_open_below(sm, sq);'),
+         '\tif (!dual_peeking(sm)) auto_sql_update(sm, st.noise, sq);\n\tuint8_t eff_sq = squelch_eff_level(sm, sq);\n\tif (eff_sq != sm->view.sql_eff) { sm->view.sql_eff = eff_sq; changed(sm); }\n\tif (sm->set.fm_auto_clear && sm->view.ch.mode == RADIO_MODE_FM && !sm->view.am && !sm->view.bcast && sm->view.ch.bw == RADIO_BW_25K && sm->view.state == RS_RX && !sm->ptt && !scan_on(&sm->scan)) {\n\t\tif (!sm->fm_narrow_active && st.noise >= 46u) {\n\t\t\tsm->fm_narrow_active = true;\n\t\t\tif (board.radio->fm_bw != NULL) board.radio->fm_bw(RADIO_BW_12K5);\n\t\t} else if (sm->fm_narrow_active && st.noise < 38u) {\n\t\t\tsm->fm_narrow_active = false;\n\t\t\tif (board.radio->fm_bw != NULL) board.radio->fm_bw(RADIO_BW_25K);\n\t\t}\n\t} else if (sm->fm_narrow_active) {\n\t\tsm->fm_narrow_active = false;\n\t\tif (board.radio->fm_bw != NULL) board.radio->fm_bw(sm->view.ch.bw);\n\t}\n\tuint8_t open_below = squelch_open_below(sm, sq);'),
+        ('\tbattery_poll(sm, now_ms);',
+         '\tbattery_poll(sm, now_ms);\n\tauto_save_sync(sm);'),
         ('void radio_sm_poll(radio_sm_t *sm, uint32_t now_ms)', '''#if CONFIG_P25_CHANNELS
 void radio_sm_native_maintenance(radio_sm_t *sm, uint32_t now_ms)
 {
 \tsm->led_now_ms = now_ms;
 \tfollow_volume(sm);
 \tbattery_poll(sm, now_ms);
+\tauto_save_sync(sm);
 \tif (sm->view.state == RS_TX) tx_timer(sm, now_ms);
 \toutputs(sm);
 #if CONFIG_BEEP

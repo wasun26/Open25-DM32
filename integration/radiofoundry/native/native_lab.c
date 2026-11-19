@@ -159,7 +159,12 @@ static void live_next(radio_sm_t *sm)
     if ((tx || rx) && test.state==NT_FAULT) nt_reset(&test);
     uint32_t sid=0;
     if (tx && nt_arm_live(&test,sm->view.ch.tx_hz)) {
-        test.config.power=sm->view.power;voice_owner=sid=test.session;
+#if CONFIG_P25_CHANNELS
+        test.config.power=radio_sm_effective_power(sm);
+#else
+        test.config.power=sm->view.power;
+#endif
+        voice_owner=sid=test.session;
     }
     taskEXIT_CRITICAL();
     if (sid && (!eligible(sm) || !p25_lab_live_begin(sid))) {

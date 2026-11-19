@@ -226,6 +226,73 @@ static void test_classic_auto_sql(void)
     radio_sm_poll(&sm,150);
     CHECK(sm.view.state==RS_IDLE && !hw.audio);
 }
+static void test_classic_auto_power_save(void)
+{
+    setup_codeplug();start();
+    fake_power.battery_mv=NULL;
+    sm.view.ch.mode=RADIO_MODE_FM;
+    sm.view.power=2;
+    sm.view.battery=RADIO_BATT_OK;
+
+    radio_settings_t rs=sm.set;
+    rs.auto_power_save=true;
+    rs.standby_led=true;
+    rs.standby_gap_s=2;
+    rs.standby_on_ms=250;
+    radio_sm_set_settings(&sm,&rs,100);
+    CHECK(!sm.view.auto_save_active && sm.view.power_eff==2);
+
+    /* Normal battery: FM TX uses full configured power (2) */
+    req(RREQ_PTT,1);
+    CHECK(sm.view.state==RS_TX && hw.tx_power==2);
+    req(RREQ_PTT,0);
+    CHECK(sm.view.state==RS_IDLE);
+
+    /* Low battery: auto_save_active engages, TX steps down to Low (0 on 3-level test board), saved power stays 2 */
+    sm.view.battery=RADIO_BATT_LOW;
+    radio_sm_poll(&sm,1750);
+    CHECK(sm.view.auto_save_active && sm.view.power==2 && sm.view.power_eff==0);
+    /* Standby LED throttled: gap doubled (2s -> 4s), pulse capped to 50 ms (3950..3999) */
+    CHECK(!hw.led[LED_GREEN]);
+    radio_sm_poll(&sm,3949);
+    CHECK(!hw.led[LED_GREEN]);
+    radio_sm_poll(&sm,3950);
+    CHECK(hw.led[LED_GREEN]);
+    radio_sm_poll(&sm,4000);
+    CHECK(!hw.led[LED_GREEN]);
+
+    /* FM TX on low battery steps down to 0 without overwriting sm.view.power */
+    req(RREQ_PTT,1);
+    CHECK(sm.view.state==RS_TX && hw.tx_power==0 && sm.view.power==2);
+    req(RREQ_PTT,0);
+    CHECK(sm.view.state==RS_IDLE);
+
+    /* Battery recovery restores full TX power */
+    sm.view.battery=RADIO_BATT_OK;
+    radio_sm_poll(&sm,4100);
+    CHECK(!sm.view.auto_save_active && sm.view.power_eff==2);
+    req(RREQ_PTT,1);
+    CHECK(sm.view.state==RS_TX && hw.tx_power==2);
+    req(RREQ_PTT,0);
+
+    /* P25 TX on low battery also steps down to 0 */
+    classic_select(true);
+    rs=sm.set;
+    rs.auto_power_save=true;
+    radio_sm_set_settings(&sm,&rs,now);
+    sm.batt_ms=now+10;
+    sm.view.battery=RADIO_BATT_LOW;
+    radio_sm_native_maintenance(&sm,now+10);
+    CHECK(sm.view.auto_save_active && sm.view.power==2 && sm.view.power_eff==0);
+    radio_req_t p={.type=RREQ_PTT,.arg=1};
+    CHECK(native_lab_request(&sm,&p)==1);
+    classic_pump();classic_pump();
+    uint8_t raw[36]={0};
+    CHECK(native_lab_live_block(classic_sid,raw,0) && native_lab_live_block(classic_sid,raw,0));
+    CHECK(native_lab_live_go(classic_sid));classic_pump();
+    CHECK(classic_live->state==NT_TX && classic_live->config.power==0 && sm.view.power==2);
+    p.arg=0;CHECK(native_lab_request(&sm,&p)==1);classic_pump();classic_pump();classic_pump();
+}
 /* The queue is empty except for the actual task's retained request. */
 static radio_req_t classic_request;
 static bool classic_retained;
@@ -309,7 +376,7 @@ static void test_issue28_idle_dmr(void)
 }
 int main(void)
 {
-    int prior=upstream_radio_main();test_issue28_idle_dmr();test_classic_ownership();test_classic_idle_rearm();test_classic_saved_refresh();test_classic_standby_led();test_classic_auto_sql();
+    int prior=upstream_radio_main();test_issue28_idle_dmr();test_classic_ownership();test_classic_idle_rearm();test_classic_saved_refresh();test_classic_standby_led();test_classic_auto_sql();test_classic_auto_power_save();
     printf("Classic real FM/DMR/P25 admission and ownership: %d failures\n",failures);
     return prior || failures ? 1 : 0;
 }
