@@ -250,6 +250,101 @@ static void ced_rx_band(channel_t *c)'''),
 
 static const ui_scr_def_t confirm_screen = {'''),
         ('.prefix = TRN("Factory Reset"), .hint', '.title = confirm_title, .hint'),
+        ('\tconst ui_recent_t *r = ui_recent_get((uint8_t)i);\n\tif (r == NULL)\n\t\treturn false;',
+         '\tconst ui_recent_t *r = ui_recent_get((uint8_t)i);\n\tif (r == NULL || r->analog)\n\t\treturn false;'),
+        ('\tif (r->out) {\n\t\tsb_str(&b, GLYPH_ARROW);\n\t\tsb_str(&b, r->group ? "TG " : "");',
+         '''\tif (r->analog) {
+\t\tif (r->out)
+\t\t\tsb_str(&b, GLYPH_ARROW);
+\t\tif (r->name[0])
+\t\t\tsb_str(&b, r->name);
+\t\telse
+\t\t\tsb_freq(&b, r->src);
+\t\tsb_str(&vb, r->analog == 2 ? "AM " : "FM ");
+\t\tif (!r->out && r->peak_rssi < 0) {
+\t\t\tsb_i32(&vb, r->peak_rssi);
+\t\t\tsb_str(&vb, "dBm ");
+\t\t}
+\t\tif (r->dur_s > 0) {
+\t\t\tsb_u32(&vb, r->dur_s, 1);
+\t\t\tsb_str(&vb, "s ");
+\t\t}
+\t\tsb_age(&vb, ui_st.now_ms - r->ms);
+\t\treturn;
+\t}
+\tif (r->out) {
+\t\tsb_str(&b, GLYPH_ARROW);
+\t\tsb_str(&b, r->group ? "TG " : "");'''),
+        ('''static void recent_select(uint16_t i, bool hold)
+{
+\tui_target_t t;
+\tif (recent_target(i, &t))
+\t\tui_talk(&t, hold);
+}
+
+static void recent_context(uint16_t i)
+{
+\tconst ui_recent_t *r = ui_recent_get((uint8_t)i);
+\tui_target_t t;
+\tif (r != NULL) {
+\t\tui_recent_target(r, &t);
+\t\tui_open_actions(&t);
+\t}
+}''',
+         '''static void recent_tune_analog(const ui_recent_t *r)
+{
+\tif (r->dst == 0) {
+\t\tradio_req_vfo_set(r->src);
+\t} else {
+\t\tuint16_t zi = (uint16_t)(r->dst >> 16);
+\t\tuint16_t pos = (uint16_t)((r->dst & 0xFFFFu) - 1u);
+\t\tif (ui_view()->vfo)
+\t\t\tradio_req_vfo(false);
+\t\tif (ui_view()->zone_index != zi)
+\t\t\tradio_req_zone(zi);
+\t\tradio_req_zone_pos(pos);
+\t}
+\tui_go_home();
+}
+
+static void recent_select(uint16_t i, bool hold)
+{
+\tconst ui_recent_t *r = ui_recent_get((uint8_t)i);
+\tif (r != NULL && r->analog) {
+\t\trecent_tune_analog(r);
+\t\treturn;
+\t}
+\tui_target_t t;
+\tif (recent_target(i, &t))
+\t\tui_talk(&t, hold);
+}
+
+static void recent_context(uint16_t i)
+{
+\tconst ui_recent_t *r = ui_recent_get((uint8_t)i);
+\tui_target_t t;
+\tif (r != NULL) {
+\t\tif (r->analog) {
+\t\t\trecent_tune_analog(r);
+\t\t\treturn;
+\t\t}
+\t\tui_recent_target(r, &t);
+\t\tui_open_actions(&t);
+\t}
+}'''),
+        ('static void hub_select(uint16_t i, bool hold)',
+         'static void recent_tune_analog(const ui_recent_t *r);\n\nstatic void hub_select(uint16_t i, bool hold)'),
+        ('''\t\tui_target_t t;
+\t\tui_recent_target(ui_recent_get(0), &t);
+\t\tui_open_actions(&t);''',
+         '''\t\tconst ui_recent_t *r = ui_recent_get(0);
+\t\tif (r != NULL && r->analog) {
+\t\t\trecent_tune_analog(r);
+\t\t\treturn;
+\t\t}
+\t\tui_target_t t;
+\t\tui_recent_target(r, &t);
+\t\tui_open_actions(&t);'''),
     ])
     transform('core/ui/ui_screens.c', [
         (boot, r'''// --- boot splash ---
@@ -338,6 +433,62 @@ void ui_draw_splash(const char *board_name, const char *version, const char *lin
          '\tbool pw_temp = v->power != channel_power(v);\n\tbool pw_eco = v->auto_save_active && v->power_eff < v->power;\n\tif (pw_temp)\n\t\tx = gfx_text(f, x, L->chips_y, GLYPH_DOT, ui_col.warn);\n\tsb_init(&b, buf, sizeof buf);\n\tsb_str(&b, ui_power_name(v->power));\n\tif (pw_eco) {\n\t\tsb_chr(&b, \'>\');\n\t\tsb_str(&b, ui_power_name(v->power_eff));\n\t}\n\tx = gfx_text(f, x, L->chips_y, buf, (pw_temp || pw_eco) ? ui_col.warn : ui_col.fg) + f->w;'),
         ('\tcase QT_POWER:\n\t\tif (v->power != channel_power(v))\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_str(&b, ui_power_name(v->power));\n\t\treturn true;',
          '\tcase QT_POWER:\n\t\tif (v->power != channel_power(v))\n\t\t\tsb_str(&b, GLYPH_DOT);\n\t\tsb_str(&b, ui_power_name(v->power));\n\t\tif (v->auto_save_active && v->power_eff < v->power) {\n\t\t\tsb_chr(&b, \'>\');\n\t\t\tsb_str(&b, ui_power_name(v->power_eff));\n\t\t}\n\t\treturn true;'),
+        ('''\t\tif (v->last_rx_ms) {
+\t\t\tsb_str(&b, TR("Last activity "));
+\t\t\tsb_age(&b, s->now_ms - v->last_rx_ms);
+\t\t} else {
+\t\t\tsb_str(&b, TR("No activity yet"));
+\t\t}''',
+         '''\t\tif (v->ch.mode == RADIO_MODE_FM && !v->bcast && s->ana_last_ms != 0 && !v->monitor) {
+\t\t\tchar who[24], where[48];
+\t\t\tsbuf_t wb;
+\t\t\tsb_init(&wb, who, sizeof who);
+\t\t\tif (s->ana_last_out)
+\t\t\t\tsb_str(&wb, GLYPH_ARROW);
+\t\t\tif (s->ana_last_name[0])
+\t\t\t\tsb_str(&wb, s->ana_last_name);
+\t\t\telse
+\t\t\t\tsb_freq(&wb, s->ana_last_hz);
+\t\t\tsb_init(&wb, where, sizeof where);
+\t\t\tsb_str(&wb, s->ana_last_kind == 2 ? "AM " : "FM ");
+\t\t\tif (!s->ana_last_out && s->ana_last_rssi < 0) {
+\t\t\t\tsb_i32(&wb, s->ana_last_rssi);
+\t\t\t\tsb_str(&wb, "dBm ");
+\t\t\t}
+\t\t\tif (s->ana_last_dur_s > 0) {
+\t\t\t\tsb_u32(&wb, s->ana_last_dur_s, 1);
+\t\t\t\tsb_str(&wb, "s ");
+\t\t\t}
+\t\t\tsb_age(&wb, s->now_ms - s->ana_last_ms);
+\t\t\tif (L->activity_h >= 2 * sm->h) {
+\t\t\t\tgfx_text_fit(sm, who, w, fit, sizeof fit);
+\t\t\t\tgfx_text(sm, 0, y, fit, ui_col.fg);
+\t\t\t\tgfx_text_fit(sm, where, w, fit, sizeof fit);
+\t\t\t\tgfx_text(sm, 0, y + sm->h, fit, ui_col.dim);
+\t\t\t} else {
+\t\t\t\ty += (L->activity_h - sm->h) / 2;
+\t\t\t\tgfx_text_fit(sm, where, w - 7 * sm->w, fit, sizeof fit);
+\t\t\t\tint ww = gfx_text_width(sm, fit);
+\t\t\t\tgfx_text(sm, w - ww, y, fit, ui_col.dim);
+\t\t\t\tgfx_text_fit(sm, who, w - ww - sm->w, fit, sizeof fit);
+\t\t\t\tgfx_text(sm, 0, y, fit, ui_col.fg);
+\t\t\t}
+\t\t\tbreak;
+\t\t}
+\t\tif (v->last_rx_ms) {
+\t\t\tsb_str(&b, TR("Last activity "));
+\t\t\tsb_age(&b, s->now_ms - v->last_rx_ms);
+\t\t} else {
+\t\t\tsb_str(&b, TR("No activity yet"));
+\t\t}'''),
+    ])
+    transform('core/ui/ui_nav.h', [
+        ('\tuint32_t gps_dist_m;\n} ui_recent_t;',
+         '\tuint32_t gps_dist_m;\n\tuint8_t analog;\t\t// 0 = DMR, 1 = FM, 2 = AM (src = rx_hz, dst = 0 VFO or (zone<<16)|(pos+1))\n\tint8_t peak_rssi;\t// strongest RX RSSI (dBm) for analog activity\n\tuint16_t dur_s;\t\t// duration in seconds for analog activity\n} ui_recent_t;'),
+    ])
+    transform('core/ui/ui_screens.h', [
+        ('\tui_banner_t banner;',
+         '\tui_banner_t banner;\n\tuint32_t ana_last_ms;\n\tuint32_t ana_last_hz;\n\tchar ana_last_name[CODEPLUG_NAME_LEN + 1];\n\tint8_t ana_last_rssi;\n\tuint16_t ana_last_dur_s;\n\tuint8_t ana_last_kind;\n\tbool ana_last_out;'),
     ])
     transform('core/ui/ui_svc.h', [
         ('\tUI_SET_LANGUAGE,\t// the UI\'s language, i18n.h lang_value: "en" English, 0 never picked (Settings > Display; settings_t.lang)\n\tUI_SET_COUNT',
@@ -360,6 +511,70 @@ void ui_draw_splash(const char *board_name, const char *version, const char *lin
          '\tcase QT_SQUELCH:\n\t\tui_st.quick_edit = true;\n\t\tui_toast(TR("Up/Dn 0-9  # Auto SQL"));\n\t\tbreak;\n\tdefault:\t// value tiles: brightness\n\t\tui_st.quick_edit = true;\n\t\tbreak;'),
         ('\tcase ACT_CONTEXT:\n\t\tif (press && ui_st.quick_edit && kind == QT_TONE) {',
          '\tcase ACT_CONTEXT:\n\t\tif (press && kind == QT_SQUELCH) {\n\t\t\tbool next = !ui_svc_setting_get(UI_SET_AUTO_SQL);\n\t\t\tif (ui_svc_setting_set(UI_SET_AUTO_SQL, next)) {\n\t\t\t\tui_svc_apply(UI_SET_AUTO_SQL, next);\n\t\t\t\tui_toast(next ? TR("Auto SQL on") : TR("Auto SQL off"));\n\t\t\t}\n\t\t\tdirty = true;\n\t\t} else if (press && ui_st.quick_edit && kind == QT_TONE) {'),
+        ('\t\tif (recent[i].src == r->src && recent[i].dst == r->dst && recent[i].out == r->out)',
+         '\t\tif (recent[i].analog == r->analog && recent[i].src == r->src && recent[i].dst == r->dst && recent[i].out == r->out)'),
+        ('\trecent_tx = tx;\n}',
+         '''\trecent_tx = tx;
+\tstatic bool ana_active, ana_out;
+\tstatic uint32_t ana_start_ms, ana_rx_hz, ana_dst;
+\tstatic int8_t ana_peak_rssi;
+\tstatic uint8_t ana_kind;
+\tstatic char ana_name[CODEPLUG_NAME_LEN + 1];
+\tbool is_ana = v->ch.mode == RADIO_MODE_FM && !v->bcast && !v->monitor;
+\tbool ana_rx = is_ana && v->state == RS_RX;
+\tbool ana_tx = is_ana && v->state == RS_TX;
+\tbool ana_now = ana_rx || ana_tx;
+\tuint32_t cur_hz = v->ch.rx_hz;
+\tuint32_t cur_dst = v->vfo ? 0u : (((uint32_t)v->zone_index << 16) | (uint32_t)(v->zone_pos + 1u));
+\tif (ana_active && (!ana_now || ana_out != ana_tx || ana_rx_hz != cur_hz || ana_dst != cur_dst)) {
+\t\tuint32_t dur_ms = now >= ana_start_ms ? now - ana_start_ms : 0u;
+\t\tif (ana_out || dur_ms >= 300u) {
+\t\t\tuint16_t dur_s = (uint16_t)((dur_ms + 500u) / 1000u);
+\t\t\tif (dur_s == 0u) dur_s = 1u;
+\t\t\tui_recent_t r;
+\t\t\tmemset(&r, 0, sizeof r);
+\t\t\tr.src = ana_rx_hz;
+\t\t\tr.dst = ana_dst;
+\t\t\tr.out = ana_out;
+\t\t\tr.analog = ana_kind;
+\t\t\tr.peak_rssi = ana_out ? 0 : ana_peak_rssi;
+\t\t\tr.dur_s = dur_s;
+\t\t\tr.ms = now;
+\t\t\tstrcpy(r.name, ana_name);
+\t\t\trecent_add(&r);
+\t\t\tui_st.ana_last_ms = now;
+\t\t\tui_st.ana_last_hz = ana_rx_hz;
+\t\t\tstrcpy(ui_st.ana_last_name, ana_name);
+\t\t\tui_st.ana_last_rssi = r.peak_rssi;
+\t\t\tui_st.ana_last_dur_s = dur_s;
+\t\t\tui_st.ana_last_kind = ana_kind;
+\t\t\tui_st.ana_last_out = ana_out;
+\t\t}
+\t\tana_active = false;
+\t}
+\tif (ana_now) {
+\t\tint8_t rssi = (int8_t)(v->rssi_dbm < -128 ? -128 : v->rssi_dbm > 0 ? 0 : v->rssi_dbm);
+\t\tif (!ana_active) {
+\t\t\tana_active = true;
+\t\t\tana_out = ana_tx;
+\t\t\tana_start_ms = now;
+\t\t\tana_rx_hz = cur_hz;
+\t\t\tana_dst = cur_dst;
+\t\t\tana_peak_rssi = rssi;
+\t\t\tana_kind = v->am ? 2u : 1u;
+\t\t\tif (!v->vfo && v->ch.name[0])
+\t\t\t\tstr_copy(ana_name, sizeof ana_name, v->ch.name);
+\t\t\telse
+\t\t\t\tana_name[0] = 0;
+\t\t} else if (!ana_out && rssi > ana_peak_rssi) {
+\t\t\tana_peak_rssi = rssi;
+\t\t}
+\t}
+}'''),
+        ('\tfor (uint8_t i = 0; i < recent_n; i++) {\n\t\tif (!recent[i].out) {',
+         '\tfor (uint8_t i = 0; i < recent_n; i++) {\n\t\tif (!recent[i].out && !recent[i].analog) {'),
+        ('\t\tconst ui_recent_t *r = ui_recent_get(i);\n\t\tif (r->out)\n\t\t\tcontinue;',
+         '\t\tconst ui_recent_t *r = ui_recent_get(i);\n\t\tif (r->out || r->analog)\n\t\t\tcontinue;'),
     ])
     transform('core/ui/ui_svc_storage.c', [
         ('static void save_failed_text(const char *text)\n{',

@@ -60,7 +60,12 @@
 - **เมนู**: `Settings → Talk & listen → FM Auto Clear`: `On / Off`
 - **การทำงาน**: ในโหมด FM 25 kHz ขณะรับสัญญาณ (`RS_RX`) หากค่า noise ≥ 46 จะลดแบนด์วิดท์เป็น 12.5 kHz ชั่วคราว (ฮิสเทอรีซิสคืนกลับ 25 kHz เมื่อ noise < 38)
 
-### 2.8 พรีเซ็ตฟีเจอร์ใน `--classic` (`tools/build_radiofoundry.py`)
+### 2.8 Analog (FM / AM) Activity Log ใน `Recent` และหน้า Home
+- **การทำงาน**: บันทึกกิจกรรมรับ-ส่งของ Analog FM และ Air Band AM (`RS_RX` ยาว ≥ 300 ms และ `RS_TX`) ลงในหน้า **`Recent`** (`SCR_RECENT`) ร่วมกับ DMR พร้อมเก็บชื่อช่อง/ความถี่ VFO, Peak RSSI (`dBm`), ระยะเวลา (`s`), และเวลาที่ผ่านมา
+- **การแสดงผลหน้า Home**: แสดงกิจกรรม Analog ล่าสุดในตำแหน่งและรูปแบบ 2 บรรทัดเดียวกับ DMR (`Last heard`)
+- **ทางลัดจูนกลับ**: กด **OK** หรือ **`#`** บนรายการ Analog ในหน้า `Recent` จะจูนกลับไปยังช่องหรือความถี่ VFO นั้นทันที (และไม่ไปชนกับ Call-Back / Actions ของ DMR)
+
+### 2.9 พรีเซ็ตฟีเจอร์ใน `--classic` (`tools/build_radiofoundry.py`)
 - **เปิดใช้งานเพิ่ม**:
   - `AM_RX` (Air Band `108–136 MHz`, AM รับอย่างเดียว)
   - `GPS`, `APRS` (`CONFIG_APRS=y` เฉพาะ `--classic`)
