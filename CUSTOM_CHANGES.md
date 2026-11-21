@@ -60,7 +60,14 @@
 - **เมนู**: `Settings → Talk & listen → FM Auto Clear`: `On / Off`
 - **การทำงาน**: ในโหมด FM 25 kHz ขณะรับสัญญาณ (`RS_RX`) หากค่า noise ≥ 46 จะลดแบนด์วิดท์เป็น 12.5 kHz ชั่วคราว (ฮิสเทอรีซิสคืนกลับ 25 kHz เมื่อ noise < 38)
 
-### 2.8 Analog (FM / AM) Activity Log ใน `Recent` และหน้า Home
+### 2.8 SQL Fading Hold (กันเสียงขาดเป็นท่อนเมื่อสัญญาณ Analog แกว่ง)
+- **เมนู**: `Settings → Talk & listen → SQL fading hold`: `On / Off` (ค่าเริ่มต้น `Off`)
+- **การทำงาน** (รองรับทั้ง Auto SQL และ Manual SQL, ปิดอัตโนมัติขณะ Scan):
+  - ขยาย hysteresis ช่วงรับเป็น `+6` (เดิม `+3`) เพื่ออุ้มสัญญาณที่แกว่งเล็กน้อย
+  - ช่วงสัญญาณวูบแต่ยังไม่หลุดถึงพื้น static (`noise < floor - 3` หรือ `< open_below + 16`) จะยืดเวลา hang เป็น `10` polls (~200–250 ms) เพื่อข้ามจังหวะ fading ไม่ให้เสียงขาดๆ หายๆ
+  - เมื่ออีกฝั่งปล่อยคีย์จริง (`noise` พุ่งกลับถึงพื้น static หรือโทน CTCSS/DCS หลุด) จะปิดลำโพงเร็วเท่าเดิม (`2` polls ≈ 40 ms) ไม่มีเสียงซ่าค้างท้ายคีย์
+
+### 2.9 Analog (FM / AM) Activity Log ใน `Recent` และหน้า Home
 - **การทำงาน**: บันทึกกิจกรรมรับ-ส่งของ Analog FM และ Air Band AM (`RS_RX` ยาว ≥ 300 ms และ `RS_TX`) ลงในหน้า **`Recent`** (`SCR_RECENT`) ร่วมกับ DMR พร้อมเก็บชื่อช่อง/ความถี่ VFO, Peak RSSI (`dBm`), ระยะเวลา (`s`), และเวลาที่ผ่านมา
 - **การแสดงผลหน้า Home**: แสดงกิจกรรม Analog ล่าสุดในตำแหน่งและรูปแบบ 2 บรรทัดเดียวกับ DMR (`Last heard`)
 - **ทางลัดจูนกลับ**: กด **OK** หรือ **`#`** บนรายการ Analog ในหน้า `Recent` จะจูนกลับไปยังช่องหรือความถี่ VFO นั้นทันที (และไม่ไปชนกับ Call-Back / Actions ของ DMR)
@@ -88,6 +95,7 @@
 | `spotlight_mode` | `updown_home` | bits 2..3 (`(updown_home >> 2) & 0x03`) | `0` (Channel) |
 | `auto_power_save` | `unused_dmr_id` | bit 0 (`0x01`, `SETTINGS_CUSTOM_AUTO_SAVE`) | `0` (Off) |
 | `fm_auto_clear` | `unused_dmr_id` | bit 1 (`0x02`, `SETTINGS_CUSTOM_FM_CLEAR`) | `0` (Off) |
+| `sql_hold` | `unused_dmr_id` | bit 2 (`0x04`, `SETTINGS_CUSTOM_SQL_HOLD`) | `0` (Off) |
 
 > **ข้อควรระวังเมื่ออัปเดต upstream**: ตรวจสอบ `core/settings/settings.h` ของ upstream เสมอว่าไม่มีการนำบิตเหล่านี้ใน `rs_flags`, `rs_bcl`, `rs_scan_resume`, `rs_rx_save` หรือ `updown_home` ไปใช้งานซ้ำ และตรวจ `_Static_assert(sizeof(settings_t) == 392, ...)`
 

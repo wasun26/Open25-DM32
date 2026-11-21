@@ -225,6 +225,41 @@ static void test_classic_auto_sql(void)
     radio_sm_poll(&sm,140);
     radio_sm_poll(&sm,150);
     CHECK(sm.view.state==RS_IDLE && !hw.audio);
+
+    /* SQL fading hold (Off by default): soft fade to 75 closes in 2 polls */
+    CHECK(!sm.set.sql_hold);
+    signal(66,true);
+    radio_sm_poll(&sm,160);
+    CHECK(sm.view.state==RS_RX);
+    signal(75,true);
+    radio_sm_poll(&sm,170);
+    radio_sm_poll(&sm,180);
+    CHECK(sm.view.state==RS_IDLE);
+
+    /* Enable SQL fading hold: floor=84, open_below=71, hard_drop=81, wide_hold=77 */
+    rs=sm.set;
+    rs.sql_hold=true;
+    radio_sm_set_settings(&sm,&rs,190);
+    signal(66,true);
+    radio_sm_poll(&sm,200);
+    CHECK(sm.view.state==RS_RX);
+    /* Mild fade (75 < 77) holds indefinitely */
+    signal(75,true);
+    for(uint32_t t=210;t<=250;t+=10) radio_sm_poll(&sm,t);
+    CHECK(sm.view.state==RS_RX);
+    /* Deep fade (79 < hard_drop 81) bridges up to 9 polls (~200ms) without chopping */
+    signal(79,true);
+    for(uint32_t i=0;i<9;i++) radio_sm_poll(&sm,260+i*10);
+    CHECK(sm.view.state==RS_RX);
+    /* Signal swings back: resets close_count cleanly */
+    signal(68,true);
+    radio_sm_poll(&sm,360);
+    CHECK(sm.view.state==RS_RX);
+    /* Hard carrier drop to idle floor (84 >= 81) still closes fast in 2 polls */
+    signal(84,true);
+    radio_sm_poll(&sm,370);
+    radio_sm_poll(&sm,380);
+    CHECK(sm.view.state==RS_IDLE && !hw.audio);
 }
 static void test_classic_auto_power_save(void)
 {
